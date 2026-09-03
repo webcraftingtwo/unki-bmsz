@@ -1,0 +1,2135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>UNKI GEOTECH — Underground Field App</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   UNKI GEOTECH
+   Built for ruggedised tablets underground. Design constraints:
+   gloved hands, dust, cap-lamp light, water, time pressure.
+
+   · Nothing below 13px. Body 17px. Data 20–34px.
+   · Minimum tap target 60px. Primary actions 68px.
+   · Palette taken from the job: BMSZ marking yellow is the
+     primary action colour because it is the actual paint on
+     the face. Rust = stop/breach. Green = in control.
+   · Status is never colour alone — always colour + text.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root{
+  --bg:#100E0A; --panel:#1A170F; --raised:#241F16; --sunk:#0A0906;
+  --line:#3A3325; --line-soft:#2A2418;
+
+  --paint:#FFC61A;        /* BMSZ marking yellow */
+  --paint-dim:#5C4707;
+  --rust:#E04A2F;         /* breach / stop / hazard */
+  --rust-dim:#4A1C12;
+  --grow:#5FB87A;         /* in control / cleared */
+  --grow-dim:#16301F;
+  --teal:#54A296;         /* informational / interpreted */
+  --teal-dim:#14282B;
+
+  --text:#F2ECDD; --dim:#B0A692; --faint:#756C58;
+
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+
+  --tap:60px; --tap-lg:68px;
+  --rail:236px;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:17px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;overscroll-behavior-y:none;}
+button,input,select,textarea{font-family:inherit;font-size:inherit;}
+button{cursor:pointer;}
+:focus-visible{outline:3px solid var(--paint);outline-offset:2px;}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+
+/* ── layout shell ─────────────────────────────────────────── */
+#app{min-height:100vh;}
+.shell{display:flex;min-height:100vh;}
+.rail{display:none;}
+.body{flex:1;min-width:0;display:flex;flex-direction:column;}
+
+header.top{background:linear-gradient(180deg,var(--raised),var(--panel));
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;
+  padding:12px 18px;}
+.toprow{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.mark{font-weight:800;font-size:20px;letter-spacing:.06em;color:var(--paint);
+  text-transform:uppercase;line-height:1;}
+.mark em{font-style:normal;color:var(--dim);font-weight:500;}
+.topmeta{display:flex;align-items:center;gap:14px;margin-left:auto;
+  font-family:var(--mono);font-size:13px;color:var(--dim);flex-wrap:wrap;}
+.netpill{display:flex;align-items:center;gap:7px;padding:6px 11px;
+  border:1px solid var(--line);border-radius:6px;background:var(--sunk);font-size:13px;}
+.netdot{width:9px;height:9px;border-radius:50%;background:var(--grow);flex:none;}
+.netdot.off{background:var(--rust);}
+
+.wpbar{margin-top:11px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  background:var(--sunk);border:1px solid var(--line);border-left:4px solid var(--paint);
+  border-radius:7px;padding:11px 14px;}
+.wpbar .wpname{font-family:var(--mono);font-size:16px;color:var(--paint);font-weight:600;}
+.wpbar .wpsub{font-family:var(--mono);font-size:13px;color:var(--faint);}
+.wpbar .spacer{margin-left:auto;}
+
+/* ── tabs (narrow) ────────────────────────────────────────── */
+nav.tabs{display:flex;overflow-x:auto;background:var(--panel);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:29;
+  scrollbar-width:none;}
+nav.tabs::-webkit-scrollbar{display:none;}
+nav.tabs button{flex:0 0 auto;background:none;border:none;color:var(--faint);
+  font-family:var(--mono);font-size:13.5px;letter-spacing:.05em;text-transform:uppercase;
+  padding:0 16px;height:var(--tap);border-bottom:3px solid transparent;white-space:nowrap;
+  display:flex;align-items:center;gap:7px;}
+nav.tabs button.active{color:var(--paint);border-bottom-color:var(--paint);background:var(--raised);}
+nav.tabs button.locked{color:var(--faint);opacity:.45;}
+.lockglyph{font-size:12px;}
+
+main{flex:1;padding:20px 18px 120px;max-width:1180px;width:100%;margin:0 auto;}
+
+/* ── wide screens: left rail ──────────────────────────────── */
+@media (min-width:900px){
+  .rail{display:flex;flex-direction:column;width:var(--rail);flex:none;
+    background:var(--panel);border-right:1px solid var(--line);
+    position:sticky;top:0;height:100vh;overflow-y:auto;}
+  .railhead{padding:20px 18px 16px;border-bottom:1px solid var(--line);}
+  .railnav{padding:10px 0;flex:1;}
+  .railnav button{width:100%;background:none;border:none;text-align:left;
+    color:var(--dim);font-family:var(--mono);font-size:14px;letter-spacing:.04em;
+    text-transform:uppercase;padding:0 18px;height:var(--tap);
+    display:flex;align-items:center;gap:11px;border-left:4px solid transparent;}
+  .railnav button.active{color:var(--paint);border-left-color:var(--paint);background:var(--raised);}
+  .railnav button.locked{opacity:.42;}
+  .railnav .grp{font-family:var(--mono);font-size:12px;color:var(--faint);
+    padding:16px 18px 7px;letter-spacing:.12em;text-transform:uppercase;}
+  nav.tabs{display:none;}
+  main{padding:26px 30px 130px;}
+}
+
+/* ── typography ───────────────────────────────────────────── */
+.eyebrow{font-family:var(--mono);font-size:13px;color:var(--teal);text-transform:uppercase;
+  letter-spacing:.11em;margin-bottom:6px;}
+h2.title{font-size:27px;margin:0 0 6px;font-weight:800;letter-spacing:-.01em;}
+p.sub{color:var(--dim);font-size:16px;margin:0 0 22px;max-width:70ch;}
+h3.sec{font-family:var(--mono);font-size:14px;color:var(--paint);text-transform:uppercase;
+  letter-spacing:.1em;margin:0 0 14px;font-weight:600;}
+.clause{font-family:var(--mono);font-size:12.5px;color:var(--faint);letter-spacing:.03em;}
+
+/* ── cards & forms ────────────────────────────────────────── */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:20px;margin-bottom:18px;}
+.card.hot{border-color:var(--rust);}
+.card.ok{border-color:var(--grow);}
+.card.pri{border-color:var(--paint);}
+.grid{display:grid;gap:14px;margin-bottom:14px;}
+.g2{grid-template-columns:1fr 1fr;}
+.g3{grid-template-columns:repeat(3,1fr);}
+.g4{grid-template-columns:repeat(4,1fr);}
+@media (max-width:700px){.g2,.g3,.g4{grid-template-columns:1fr;}}
+@media (min-width:701px) and (max-width:1000px){.g4{grid-template-columns:1fr 1fr;}}
+
+label.f{display:block;font-size:14px;color:var(--dim);margin-bottom:7px;font-weight:500;}
+label.f b{color:var(--text);}
+input[type=text],input[type=number],input[type=password],input[type=time],select,textarea{
+  width:100%;background:var(--sunk);border:1.5px solid var(--line);color:var(--text);
+  padding:0 14px;height:var(--tap);border-radius:7px;font-size:17px;}
+textarea{padding:13px 14px;height:auto;min-height:96px;resize:vertical;line-height:1.5;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--paint);background:#0D0B07;}
+input.num,.mononum{font-family:var(--mono);font-variant-numeric:tabular-nums;}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),
+  linear-gradient(135deg,var(--dim) 50%,transparent 50%);
+  background-position:calc(100% - 20px) 26px,calc(100% - 14px) 26px;
+  background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:44px;}
+
+/* ── chips ────────────────────────────────────────────────── */
+.chips{display:flex;flex-wrap:wrap;gap:9px;}
+.chip{border:1.5px solid var(--line);background:var(--sunk);color:var(--dim);
+  font-size:15px;padding:0 18px;height:var(--tap);border-radius:8px;
+  display:flex;align-items:center;user-select:none;}
+.chip.sel{background:var(--paint-dim);border-color:var(--paint);color:var(--paint);font-weight:600;}
+.chip.sel.rust{background:var(--rust-dim);border-color:var(--rust);color:#FFB9A8;}
+.chip.sel.grow{background:var(--grow-dim);border-color:var(--grow);color:var(--grow);}
+
+/* ── buttons ──────────────────────────────────────────────── */
+.btn{width:100%;height:var(--tap-lg);border-radius:9px;border:1.5px solid var(--paint);
+  background:var(--paint);color:#161200;font-family:var(--mono);font-weight:700;
+  font-size:15px;letter-spacing:.07em;text-transform:uppercase;margin-top:8px;
+  display:flex;align-items:center;justify-content:center;gap:9px;}
+.btn:active{transform:translateY(1px);}
+.btn:disabled{opacity:.35;pointer-events:none;}
+.btn.ghost{background:none;color:var(--dim);border-color:var(--line);}
+.btn.danger{background:var(--rust);border-color:var(--rust);color:#fff;}
+.btn.teal{background:var(--teal);border-color:var(--teal);color:#08201D;}
+.btn.sm{height:var(--tap);font-size:14px;width:auto;padding:0 20px;margin-top:0;}
+.btnrow{display:flex;gap:12px;flex-wrap:wrap;}
+.btnrow .btn{width:auto;flex:1;min-width:180px;}
+
+/* ── checklist ────────────────────────────────────────────── */
+.check{display:flex;align-items:flex-start;gap:14px;padding:15px 16px;
+  border:1.5px solid var(--line);border-radius:9px;margin-bottom:10px;background:var(--sunk);
+  min-height:var(--tap);}
+.check.on{border-color:var(--grow);background:var(--grow-dim);}
+.check.fail{border-color:var(--rust);background:var(--rust-dim);}
+.check .box{width:30px;height:30px;border:2px solid var(--line);border-radius:6px;flex:none;
+  display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;
+  color:transparent;margin-top:1px;}
+.check.on .box{border-color:var(--grow);background:var(--grow);color:#08200F;}
+.check.fail .box{border-color:var(--rust);background:var(--rust);color:#fff;}
+.check .txt{flex:1;font-size:16px;line-height:1.45;}
+.check .txt small{display:block;color:var(--faint);font-size:13px;margin-top:4px;
+  font-family:var(--mono);}
+.check .flag{background:none;border:1.5px solid var(--line);color:var(--faint);
+  border-radius:7px;height:42px;padding:0 13px;font-family:var(--mono);font-size:12.5px;
+  text-transform:uppercase;flex:none;}
+.check.fail .flag{border-color:var(--rust);color:#FFB9A8;}
+
+/* ── notices ──────────────────────────────────────────────── */
+.note{border-radius:9px;padding:15px 17px;font-size:15.5px;line-height:1.55;
+  margin-bottom:18px;display:flex;gap:13px;align-items:flex-start;}
+.note .mk{font-family:var(--mono);font-size:20px;line-height:1.1;flex:none;font-weight:700;}
+.note.stop{border:1.5px solid var(--rust);background:var(--rust-dim);color:#FFC9BC;}
+.note.stop .mk{color:var(--rust);}
+.note.info{border:1.5px solid var(--teal);background:var(--teal-dim);color:#B4DDD6;}
+.note.info .mk{color:var(--teal);}
+.note.go{border:1.5px solid var(--grow);background:var(--grow-dim);color:#B9E5C6;}
+.note.go .mk{color:var(--grow);}
+.note.warn{border:1.5px solid var(--paint);background:#33280A;color:#FFE0A0;}
+.note.warn .mk{color:var(--paint);}
+.note b{color:#fff;}
+
+/* ── data display ─────────────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px;}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px 14px;}
+.stat.hot{border-color:var(--rust);}
+.stat .num{font-family:var(--mono);font-size:30px;font-weight:700;color:var(--paint);
+  font-variant-numeric:tabular-nums;line-height:1.1;}
+.stat.hot .num{color:var(--rust);}
+.stat .lbl{font-family:var(--mono);font-size:12.5px;color:var(--faint);text-transform:uppercase;
+  letter-spacing:.06em;margin-top:6px;}
+
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:9px;margin-bottom:18px;}
+table{width:100%;border-collapse:collapse;font-size:15.5px;}
+th{background:var(--raised);font-family:var(--mono);font-size:12.5px;color:var(--faint);
+  text-transform:uppercase;letter-spacing:.07em;text-align:left;padding:13px 14px;font-weight:600;
+  white-space:nowrap;}
+td{padding:13px 14px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;}
+tr.breach td{background:#2A130E;}
+td.n{font-family:var(--mono);}
+
+.item{border:1.5px solid var(--line);border-radius:9px;padding:15px 16px;margin-bottom:11px;
+  background:var(--panel);}
+.item.hot{border-color:var(--rust);}
+.item .ih{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;}
+.item .it{font-family:var(--mono);font-size:16px;color:var(--paint);font-weight:600;}
+.item .ts{font-family:var(--mono);font-size:13px;color:var(--faint);}
+.item .ib{font-size:15px;color:var(--dim);line-height:1.6;}
+.item .ib b{color:var(--text);}
+
+.tag{display:inline-flex;align-items:center;font-family:var(--mono);font-size:12px;
+  text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;border-radius:5px;font-weight:600;}
+.tag.pend{background:#33280A;color:var(--paint);border:1px solid var(--paint-dim);}
+.tag.sync{background:var(--grow-dim);color:var(--grow);border:1px solid var(--grow);}
+.tag.stop{background:var(--rust-dim);color:#FFB9A8;border:1px solid var(--rust);}
+.tag.info{background:var(--teal-dim);color:var(--teal);border:1px solid var(--teal);}
+
+.empty{text-align:center;padding:46px 20px;color:var(--faint);font-size:16px;
+  font-family:var(--mono);border:1.5px dashed var(--line);border-radius:10px;}
+
+/* ── module grid ──────────────────────────────────────────── */
+.mods{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;}
+.mod{background:var(--panel);border:1.5px solid var(--line);border-radius:11px;padding:18px 16px;
+  text-align:left;color:var(--text);min-height:130px;display:flex;flex-direction:column;}
+.mod:active{background:var(--raised);}
+.mod.locked{opacity:.42;}
+.mod .mi{font-family:var(--mono);font-size:12.5px;color:var(--teal);text-transform:uppercase;
+  letter-spacing:.08em;}
+.mod .mn{font-size:19px;font-weight:700;margin-top:8px;line-height:1.25;}
+.mod .mc{font-family:var(--mono);font-size:26px;color:var(--paint);margin-top:auto;padding-top:12px;
+  font-variant-numeric:tabular-nums;}
+.mod.locked .mc{color:var(--faint);font-size:14px;}
+
+/* ── gate strip ───────────────────────────────────────────── */
+.gates{display:flex;gap:0;margin-bottom:20px;border:1px solid var(--line);border-radius:9px;
+  overflow:hidden;background:var(--panel);flex-wrap:wrap;}
+.gate{flex:1;min-width:130px;padding:13px 14px;border-right:1px solid var(--line);}
+.gate:last-child{border-right:none;}
+.gate .gn{font-family:var(--mono);font-size:12px;color:var(--faint);text-transform:uppercase;
+  letter-spacing:.07em;}
+.gate .gs{font-family:var(--mono);font-size:14.5px;margin-top:5px;font-weight:600;}
+.gate.done .gs{color:var(--grow);}
+.gate.open .gs{color:var(--paint);}
+.gate.shut .gs{color:var(--faint);}
+
+/* ── SOS floating button ──────────────────────────────────── */
+.sos{position:fixed;right:22px;bottom:22px;width:86px;height:86px;border-radius:50%;
+  background:var(--rust);border:3px solid #FF7C60;color:#fff;font-family:var(--mono);
+  font-weight:800;font-size:15px;letter-spacing:.05em;z-index:50;
+  box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 0 rgba(224,74,47,.55);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  animation:sospulse 2.6s ease-out infinite;}
+.sos .g{font-size:26px;line-height:1;}
+.sos:active{transform:scale(.94);}
+@keyframes sospulse{0%{box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 0 rgba(224,74,47,.5);}
+  70%{box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 22px rgba(224,74,47,0);}
+  100%{box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 0 rgba(224,74,47,0);}}
+@media (max-width:600px){.sos{width:74px;height:74px;right:16px;bottom:16px;font-size:13px;}
+  .sos .g{font-size:22px;}}
+
+/* ── flash toast ──────────────────────────────────────────── */
+.flash{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--grow);
+  color:#08200F;font-family:var(--mono);font-size:15px;font-weight:700;padding:14px 26px;
+  border-radius:9px;z-index:90;opacity:0;transition:opacity .22s;pointer-events:none;
+  box-shadow:0 6px 22px rgba(0,0,0,.5);max-width:90vw;text-align:center;}
+.flash.show{opacity:1;}
+.flash.bad{background:var(--rust);color:#fff;}
+
+/* ── modal ────────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(6,5,3,.86);z-index:80;display:flex;
+  align-items:flex-end;justify-content:center;padding:0;}
+@media (min-width:700px){.scrim{align-items:center;padding:24px;}}
+.sheet{background:var(--panel);border:1.5px solid var(--rust);border-radius:14px 14px 0 0;
+  width:100%;max-width:640px;max-height:92vh;overflow-y:auto;padding:22px 20px 30px;}
+@media (min-width:700px){.sheet{border-radius:14px;}}
+
+/* ── full screen stages ───────────────────────────────────── */
+.stage{min-height:100vh;display:flex;flex-direction:column;padding:34px 22px 60px;
+  background:radial-gradient(ellipse at 50% 0%,#231E14,#0B0A06);}
+.stagebox{width:100%;max-width:620px;margin:0 auto;}
+.brandbig{text-align:center;margin-bottom:28px;}
+.brandbig .b1{font-size:34px;font-weight:800;color:var(--paint);letter-spacing:.07em;
+  text-transform:uppercase;line-height:1;}
+.brandbig .b2{font-family:var(--mono);font-size:14px;color:var(--faint);letter-spacing:.14em;
+  margin-top:10px;text-transform:uppercase;}
+.pick{display:flex;justify-content:space-between;align-items:center;gap:14px;
+  padding:0 18px;min-height:var(--tap-lg);border:1.5px solid var(--line);border-radius:9px;
+  margin-bottom:11px;background:var(--sunk);width:100%;text-align:left;color:var(--text);}
+.pick:active{background:var(--raised);}
+.pick.sel{border-color:var(--paint);background:var(--paint-dim);}
+.pick b{font-family:var(--mono);font-size:16px;font-weight:600;}
+.pick span{font-family:var(--mono);font-size:13px;color:var(--faint);}
+
+/* ── re-entry board ───────────────────────────────────────── */
+.rec{border:1.5px solid var(--line);border-left:5px solid var(--faint);border-radius:9px;
+  padding:16px;margin-bottom:12px;background:var(--panel);width:100%;text-align:left;color:var(--text);}
+.rec.cleared{border-left-color:var(--grow);}
+.rec.held{border-left-color:var(--rust);}
+.rec.pending{border-left-color:var(--paint);}
+.rec.sel{border-color:var(--paint);background:var(--raised);}
+.rec .rh{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;}
+.rec .rn{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--paint);}
+.rec .rm{font-family:var(--mono);font-size:13.5px;color:var(--dim);margin-top:8px;line-height:1.7;}
+.rec .rm b{color:var(--text);}
+.taskchips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;}
+.tchip{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.05em;
+  padding:5px 10px;border-radius:5px;background:var(--teal-dim);color:var(--teal);
+  border:1px solid var(--teal);font-weight:600;}
+.tchip.mk{background:var(--paint-dim);color:var(--paint);border-color:var(--paint);}
+
+/* ── section view ─────────────────────────────────────────── */
+.svgbox{background:var(--sunk);border:1px solid var(--line);border-radius:10px;
+  padding:14px 8px 6px;margin-bottom:18px;}
+.legend{display:flex;gap:18px;flex-wrap:wrap;justify-content:center;
+  font-family:var(--mono);font-size:12.5px;color:var(--faint);padding:8px 4px 2px;}
+.legend i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:6px;}
+
+/* ── keypad ───────────────────────────────────────────────── */
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+.pad button{height:var(--tap-lg);border-radius:9px;background:var(--raised);
+  border:1.5px solid var(--line);color:var(--text);font-family:var(--mono);
+  font-size:23px;font-weight:600;}
+.pad button:active{background:var(--paint-dim);}
+.pad button.act{background:var(--paint);color:#161200;border-color:var(--paint);
+  font-size:14px;letter-spacing:.06em;font-weight:800;}
+.pad button.sm{font-size:14px;letter-spacing:.05em;color:var(--dim);}
+
+.field{width:100%;text-align:left;border-radius:9px;padding:14px 16px;background:var(--sunk);
+  border:2px solid var(--line);color:var(--text);margin-bottom:11px;}
+.field.act{border-color:var(--paint);background:var(--raised);}
+.field.bad{border-color:var(--rust);}
+.field .fl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:12.5px;
+  color:var(--faint);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;}
+.field .fv{font-family:var(--mono);font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;
+  line-height:1.05;}
+.field .fs{font-family:var(--mono);font-size:13.5px;font-weight:700;margin-top:6px;
+  letter-spacing:.04em;}
+
+hr.div{border:none;border-top:1px solid var(--line);margin:22px 0;}
+.hint{font-size:14px;color:var(--faint);line-height:1.55;margin-top:9px;}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="flash" id="flash"></div>
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   UNKI GEOTECH · underground geological field application
+   Governing standard: UNKI-MIN-MRM-STD-201 v2.0 "BMSZ Marking & Face
+   Measurements", 20/05/2011. Referenced procedure UNKI-MIN-MRM-PRO-200.
+
+   Every checklist item below carries the clause it enforces. Nothing in
+   this file is invented policy — where the standard is silent the item is
+   marked DERIVED so the Chief Geologist can rule on it.
+
+   NOT AN OFFICIAL UNKI SYSTEM until formally authorised (§39 of brief).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const PFX = 'unkigeo';
+const KINDS = ['faceLog','bmsz','offsetSet','structure','hazard','note','shift','engagement'];
+let cache = {}; KINDS.forEach(k=>cache[k]=[]);
+
+let stage   = 'login';     // login → reentry → preshift → app → signout
+let VIEW    = 'dash';
+let session = null;        // {name, role, employeeNo, section}
+let place   = null;        // selected workplace, hydrated from re-entry feed
+let shift   = null;        // active shift record with all gate states
+let sosOpen = false;
+
+/* ═══ 1 · PEOPLE ══════════════════════════════════════════════════════ */
+
+const USERS = [
+  {name:'T. Chidindi',   employeeNo:'UK-4471', role:'Geological Technician', section:'North Section'},
+  {name:'R. Mahove',     employeeNo:'UK-3902', role:'Geological Technician', section:'South Section'},
+  {name:'O. Mapengo',    employeeNo:'UK-2210', role:'Section Geologist',     section:'North Section'},
+  {name:'O. Mandingaisa',employeeNo:'UK-1004', role:'Chief Geologist',       section:'MRM'},
+  {name:'C. Musa',       employeeNo:'UK-0881', role:'MRM Manager',           section:'MRM'},
+];
+const CAN = {
+  'Geological Technician':{capture:true, authoriseDeviation:false, review:false},
+  'Section Geologist':    {capture:true, authoriseDeviation:false, review:true},
+  'Chief Geologist':      {capture:true, authoriseDeviation:true,  review:true},
+  'MRM Manager':          {capture:false,authoriseDeviation:false, review:true},
+};
+const can = k => session ? !!(CAN[session.role]||{})[k] : false;
+
+/* ═══ 2 · SHE CHECKLISTS — verbatim from STD-201 ══════════════════════ */
+
+/* §8.1.1 — the Geo-Tech gives task instructions to the team and inspects
+   PPE. The crew must report missing/inadequate/defective PPE. */
+const PPE = [
+  ['Hard hat',                    '§8.1.1'],
+  ['Overalls',                    '§8.1.1'],
+  ['Sinking suit',                '§8.1.1'],
+  ['Gumboots',                    '§8.1.1'],
+  ['Goggles',                     '§8.1.1'],
+  ['Gloves',                      '§8.1.1'],
+  ['Cap lamp and cap lamp belt',  '§8.1.1'],
+  ['Rescue pack',                 '§8.1.1'],
+  ['Respirator',                  '§8.1.1'],
+  ['Ear plugs / ear muffs',       '§8.1.1'],
+  ['Safety belt / safety harness','§8.1.1'],
+];
+
+/* §8.2.1 + §9.4 — stated to be the MINIMUM tools required. */
+const TOOLS = [
+  ['10 m soft tape',                        'Base tape · §8.2.1'],
+  ['50 m soft tape',                        'Top to bottom of bord, taut · §9.8.v'],
+  ['Compass / clinometer',                  'Strike and dips · §8.2.1'],
+  ['Clinorule',                             'Offsets · §8.2.1'],
+  ['Yellow spray paint',                    'BMSZ marking · §8.2.1'],
+  ['Wet strength notebook (Orange No 248)', 'Measurements and lithology · §8.2.1'],
+  ['Pencils 2H–4H, sharpener, eraser',      'Tied to notebook or slit in cover · §8.2.1'],
+  ['Geological hammer',                     '§8.2.1'],
+  ['Sample bag',                            '§8.2.1'],
+  ['Distometer',                            'If available · §8.2.1'],
+  ['Niton XL3t handheld XRF analyser',      '§9.4'],
+];
+
+/* §8.2.2 — transportation of men and equipment. */
+const TRANSPORT = [
+  ['Equipment in provided suitable containers (e.g. XRF hand analyser)','§8.2.2'],
+  ['No personnel transported with equipment in the same compartment',  '§8.2.2'],
+  ['All damages reported',                                             '§8.2.2'],
+  ['Proper carrying techniques practised',                             '§8.2.2'],
+];
+
+/* §9.5 — underground geology checklist, before proceeding underground. */
+const REGISTER = [
+  ['Underground departure time entered',            '§9.5.i(a)'],
+  ['Purpose of underground visit entered',          '§9.5.i(b)'],
+  ['Areas to be visited / inspected entered',       '§9.5.i(c)'],
+  ['Comments — accompanying visitors etc.',         '§9.5.i(d)'],
+];
+
+/* §9.6.2 — preparing for reef/BMSZ marking. */
+const XRF_PREP = [
+  ['Handheld XRF analyser collected',                        '§9.6.2'],
+  ['XRF usage log sheet completed per Radiation Protection Programme','§9.6.2'],
+  ['Departure time entered in Geology Personnel Underground Log Book','§9.6.2'],
+  ['All equipment confirmed in good condition and working properly',  '§9.6.2'],
+];
+
+/* §8.3 — checking of work area, at the end. */
+const ACCESS = [
+  ['Miner in charge notified of the presence of the geology team',      '§8.3'],
+  ['Miner has signed the Geo-Tech field book as acknowledgement',       '§8.3'],
+  ['Permission to enter obtained from Line Management',                 '§9.5.ii'],
+  ['Line Management has advised of hazards in the workplace',           '§9.5.ii'],
+  ['Geo-Tech and responsible miner accessed the end together',          '§8.3'],
+  ['Area thoroughly watered down to allay dust',                        '§8.3'],
+  ['Area barred down to dislodge bad hangings',                         '§8.3'],
+  ['Appointed person has certified the area fit for working',           '§8.3'],
+  ['Applicable work permits obtained',                                  '§8.3'],
+  ['No barricade crossed — wire strand or substantial barricade',       '§9.5.v'],
+];
+
+/* §9.2 — frequency of marking. Hard gate: an end cannot be marked
+   unless all three are true. */
+const READINESS = [
+  ['End is supported',                    '§9.2'],
+  ['End is lashed to the footwall',       '§9.2'],
+  ['End is cleaned to the footwall',      '§9.2 — "No end will be marked unless it is cleaned to the footwall"'],
+];
+
+/* §8.3.1 / §8.3.2 / §8.3.3 — risks the technician must acknowledge. */
+const RISKS = {
+  Safety: ['Fall of ground','Noise from working underground machinery',
+           'Slipping / tripping and falling','Cap lamp failure',
+           'Being run over by underground machinery'],
+  Health: ['Dust','Fatigue','Dehydration','Inhaling paint'],
+  Environmental: ['Contamination from spray paint can disposal',
+                  'Contamination from distometer battery disposal',
+                  'Battery-powered gadgets must be rechargeable only',
+                  'Empty cans returned to stores and exchanged one-for-one'],
+};
+
+/* §9.3 — structures that may affect reef/BMSZ. */
+const STRUCTURES = [
+  {t:'Xenolith',   n:'Fragment of older lithology within younger rock. Not mineralised at Unki — lash mined material to waste.'},
+  {t:'Autolith',   n:'Inclusion genetically related to the host igneous rock.'},
+  {t:'Fault',      n:'Fracture with observable displacement. Common in the Great Dyke; oblique to layering, or parallel (thrust).'},
+  {t:'Shear',      n:'Deformation without displacement. Less common than faulting, seldom seen in Great Dyke successions.'},
+  {t:'Dyke',       n:'Sheet-like intrusive body. Dolerite or granite/aplite. Dolerite preferred to "diabase". Often associated with faults; groundwater repository or barrier.'},
+  {t:'Sill',       n:'Sheet-like intrusive, concordant. Not common at Unki.'},
+  {t:'Vein',       n:'Late fluid-derived. Felsic pegmatite, carbonate, quartz.'},
+  {t:'Replacement pegmatite', n:'Coarse grained pyroxenite replacing reef. PGE barren at Unki. Highly irregular, undulatory contacts, rapidly changing shape.'},
+  {t:'Joint',      n:'All joints within 3 m of face must be noted. §9.6.3'},
+];
+
+/* ═══ 3 · LIMIT SETS ══════════════════════════════════════════════════
+   From the supplied face marking sheets. The "mining cut" series on the
+   NS3 chart plots at exactly these limit values, confirming the limits
+   ARE the design cut envelope. Versioned — change requires Chief
+   Geologist authorisation (§7.3). */
+
+const LIMITS = {
+  bord:    {label:'Bord / ledging decline', hw:0.45, fw:-1.35, src:'Sheet 2NB3 12-07-10'},
+  decline: {label:'Decline / strike drive', hw:1.50, fw:-1.00, src:'Sheets MM 26-04-10, NS3 12-07-10'},
+};
+
+/* Blast-induced offset causes. The offset module records deviation of the
+   blasted profile from the design cut — over-break and under-break caused
+   by the blast, not by geology. Geological displacement is recorded
+   separately under Structures. */
+const BLAST_CAUSES = [
+  'Over-charging / excess explosive',
+  'Hole deviation — drilling alignment',
+  'Rig not aligned to BMSZ sidewall mark',
+  'Incorrect burden or spacing',
+  'Sockets / misfire redrill',
+  'Poor ground conditions',
+  'Support installation requirement',
+  'Marking not followed by crew',
+  'Other — see notes',
+];
+
+const HAZ_TYPES = ['Fall of ground risk','Unsupported ground','Major jointing','Fault',
+  'Shear zone','Dyke','Ground deterioration','Water intersection','Methane detected',
+  'Machinery / vehicle risk','Cap lamp / lighting failure','Other'];
+
+/* ═══ 4 · RE-ENTRY INTEGRATION ════════════════════════════════════════
+
+   ┌───────────────────────────────────────────────────────────────────┐
+   │  INTERFACE CONTRACT — Re-entry App → GeoTech App                  │
+   │                                                                   │
+   │  Replace fetchReentryFeed() with a call to the Re-entry App API.  │
+   │  Nothing else in this file needs to change. Expected shape:       │
+   │                                                                   │
+   │  { id, level, section, bord, headingType,                         │
+   │    blastNumber, blastAt, advance,                                 │
+   │    reentry: { status:'cleared'|'held'|'pending',                  │
+   │               clearedBy, clearedAt, gas:{ch4,co}, note },         │
+   │    minerTask: { tasks:['drilling','face_marking'],                │
+   │                 selectedBy, selectedAt },                         │
+   │    face: { length, width, height },                               │
+   │    peg, pegDistance }                                             │
+   │                                                                   │
+   │  Rules enforced downstream:                                       │
+   │   · status must be 'cleared' before the workplace can be opened   │
+   │   · 'face_marking' in minerTask auto-queues it for this Geo-Tech  │
+   │   · blast number, advance, peg and face dimensions pre-populate   │
+   │     the face log — the technician never retypes them              │
+   └───────────────────────────────────────────────────────────────────┘ */
+
+const MOCK_REENTRY = [
+  { id:'RE-2026-0912-01', level:'2 Level', section:'North', bord:'2NB3', headingType:'bord',
+    blastNumber:'14', blastAt:'2026-09-12T22:40:00', advance:2.4,
+    reentry:{status:'cleared', clearedBy:'M. Sibanda (Shift Boss)', clearedAt:'2026-09-13T04:15:00',
+             gas:{ch4:0.0, co:3}, note:'Ventilation restored, face washed down.'},
+    minerTask:{tasks:['drilling','face_marking'], selectedBy:'P. Ncube (Miner)', selectedAt:'2026-09-13T04:40:00'},
+    face:{length:11.4, width:11.4, height:2.6}, peg:'1255', pegDistance:19.3 },
+
+  { id:'RE-2026-0912-02', level:'3 Level', section:'North', bord:'NS3', headingType:'decline',
+    blastNumber:'09', blastAt:'2026-09-12T23:05:00', advance:2.1,
+    reentry:{status:'cleared', clearedBy:'M. Sibanda (Shift Boss)', clearedAt:'2026-09-13T04:22:00',
+             gas:{ch4:0.0, co:2}, note:'Cleared. Loose barred in sidewall.'},
+    minerTask:{tasks:['face_marking'], selectedBy:'P. Ncube (Miner)', selectedAt:'2026-09-13T04:41:00'},
+    face:{length:7.2, width:7.2, height:2.8}, peg:'1301', pegDistance:5.1 },
+
+  { id:'RE-2026-0912-03', level:'2 Level', section:'South', bord:'2SB1', headingType:'bord',
+    blastNumber:'21', blastAt:'2026-09-12T22:55:00', advance:2.2,
+    reentry:{status:'held', clearedBy:null, clearedAt:null, gas:{ch4:0.6, co:41},
+             note:'HELD — fumes not cleared, CO above re-entry limit. Re-test scheduled.'},
+    minerTask:{tasks:[], selectedBy:null, selectedAt:null},
+    face:{length:10.8, width:10.8, height:2.6}, peg:'1188', pegDistance:22.7 },
+
+  { id:'RE-2026-0912-04', level:'3 Level', section:'South', bord:'3SB2', headingType:'bord',
+    blastNumber:'07', blastAt:'2026-09-12T23:20:00', advance:2.5,
+    reentry:{status:'pending', clearedBy:null, clearedAt:null, gas:null,
+             note:'Awaiting examination.'},
+    minerTask:{tasks:[], selectedBy:null, selectedAt:null},
+    face:{length:11.0, width:11.0, height:2.7}, peg:'1342', pegDistance:14.2 },
+];
+
+let reentryFeed = [];
+let feedFetchedAt = null;
+
+async function fetchReentryFeed(){
+  /* ── SWAP THIS FOR THE REAL RE-ENTRY APP CALL ──
+     const r = await fetch(REENTRY_API + '/cleared?shift=' + shiftCode());
+     return await r.json();                                              */
+  await new Promise(r=>setTimeout(r,420));
+  return JSON.parse(JSON.stringify(MOCK_REENTRY));
+}
+
+/* Workplaces the miner has flagged for face marking AND re-entry has cleared. */
+function assignedToMe(){
+  return reentryFeed.filter(r =>
+    r.reentry.status==='cleared' && (r.minerTask.tasks||[]).includes('face_marking'));
+}
+function canOpen(r){ return r.reentry.status==='cleared'; }
+
+/* ═══ 5 · STORAGE ═════════════════════════════════════════════════════ */
+
+function nowTS(){ return new Date().toISOString(); }
+function fmtTS(iso){ if(!iso) return '—'; const d=new Date(iso);
+  return d.toLocaleDateString(undefined,{day:'2-digit',month:'short'})+' '+
+         d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function fmtT(iso){ if(!iso) return '—'; return new Date(iso)
+  .toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'}); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function flash(msg,bad){ const f=document.getElementById('flash'); if(!f)return;
+  f.textContent=msg; f.className='flash show'+(bad?' bad':'');
+  clearTimeout(f._t); f._t=setTimeout(()=>f.className='flash'+(bad?' bad':''),1800); }
+function num(v){ if(v===''||v==null||v==='-') return null; const n=parseFloat(v);
+  return isNaN(n)?null:n; }
+
+const HAS_STORE = (typeof window!=='undefined' && window.storage &&
+                  typeof window.storage.set==='function');
+const memStore = {};
+async function put(key,val){
+  if(!HAS_STORE){ memStore[key]=JSON.stringify(val); return true; }
+  try{ await window.storage.set(PFX+':'+key, JSON.stringify(val), false); return true; }
+  catch(e){ console.error('store',e); return false; }
+}
+async function get(key){
+  if(!HAS_STORE){ const v=memStore[key]; return v?JSON.parse(v):null; }
+  try{ const r=await window.storage.get(PFX+':'+key,false);
+       return r&&r.value?JSON.parse(r.value):null; }catch(e){ return null; }
+}
+async function saveEntry(kind,data){
+  const e = { id:uid(), ts:nowTS(), by:session?session.name:'unknown',
+              byNo:session?session.employeeNo:'', shiftId:shift?shift.id:null,
+              place: place?{level:place.level,section:place.section,bord:place.bord,
+                            blastNumber:place.blastNumber}:null,
+              synced:false, ...data };
+  const ok = await put(kind+':'+e.id, e);
+  cache[kind].unshift(e);
+  flash(ok?'Saved locally':'Saved to memory — storage unavailable', !ok);
+  return e;
+}
+async function updateEntry(kind,e){ await put(kind+':'+e.id, e); }
+
+async function loadAll(){
+  if(!HAS_STORE) return;
+  for(const k of KINDS){
+    try{
+      const list = await window.storage.list(PFX+':'+k+':', false);
+      const out=[];
+      if(list&&list.keys) for(const key of list.keys){
+        try{ const r=await window.storage.get(key,false); if(r&&r.value) out.push(JSON.parse(r.value)); }catch(e){}
+      }
+      out.sort((a,b)=> new Date(b.ts)-new Date(a.ts));
+      cache[k]=out;
+    }catch(e){ cache[k]=[]; }
+  }
+}
+const online = ()=> navigator.onLine;
+function pending(){ let n=0; KINDS.forEach(k=>cache[k].forEach(e=>{ if(!e.synced) n++; })); return n; }
+
+async function syncNow(){
+  if(!online()){ flash('Offline — '+pending()+' record(s) held on device',true); return; }
+  let n=0;
+  for(const k of KINDS) for(const e of cache[k])
+    if(!e.synced){ e.synced=true; e.syncedAt=nowTS(); await updateEntry(k,e); n++; }
+  flash(n? 'Synced '+n+' record(s) to MRM' : 'Already up to date');
+  render();
+}
+/* ═══ 6 · SHIFT & GATE MODEL ══════════════════════════════════════════
+   The procedure is a locked chain. A gate cannot open until the previous
+   one is fully satisfied. This is the "no loopholes" requirement — the
+   technician physically cannot reach the marking screen without the SHE
+   and access record being complete and attributable. */
+
+function newShift(){
+  return {
+    id:uid(), date:new Date().toISOString().slice(0,10), startedAt:nowTS(), endedAt:null,
+    shiftName:'Morning', tickSheetRef:'',
+    register:{}, ppe:{}, tools:{}, transport:{}, xrf:{},
+    defects:'', risksAck:false,
+    team:[], teamInstructed:false,
+    placeId:null, access:{}, readiness:{}, accessAt:null, accessBy:'',
+    signout:{}, xrfDownloaded:false, tallyUpdated:false, deviation:null,
+  };
+}
+const allDone = (obj,list)=> list.every(x=>obj[x[0]]===true);
+
+function gates(){
+  const s = shift;
+  if(!s) return {pre:'shut',access:'shut',capture:'shut',out:'shut'};
+  const pre = s.risksAck && s.teamInstructed &&
+              allDone(s.register,REGISTER) && allDone(s.ppe,PPE) &&
+              allDone(s.tools,TOOLS) && allDone(s.transport,TRANSPORT) &&
+              allDone(s.xrf,XRF_PREP);
+  const acc = pre && !!place && allDone(s.access,ACCESS) && allDone(s.readiness,READINESS);
+  const logs = cache.faceLog.filter(e=>e.shiftId===s.id).length;
+  const marks= cache.bmsz.filter(e=>e.shiftId===s.id).length;
+  const offs = cache.offsetSet.filter(e=>e.shiftId===s.id).length;
+  return {
+    pre:    pre?'done':'open',
+    access: acc?'done':(pre?'open':'shut'),
+    capture:acc?(logs&&marks&&offs?'done':'open'):'shut',
+    out:    (acc&&logs&&marks&&offs)?'open':'shut',
+    counts:{logs,marks,offs},
+  };
+}
+const unlocked = v => {
+  const g = gates();
+  if(['dash','preshift','team','hazard','note','reports'].includes(v)) return true;
+  if(v==='access') return g.pre==='done';
+  if(['facelog','bmsz','offsets','structure'].includes(v)) return g.access==='done';
+  if(v==='signout') return g.out==='open';
+  return true;
+};
+
+/* ═══ 7 · LOGIN ═══════════════════════════════════════════════════════ */
+
+function renderLogin(app){
+  app.innerHTML = `
+  <div class="stage"><div class="stagebox">
+    <div class="brandbig">
+      <div class="b1">Unki GeoTech</div>
+      <div class="b2">BMSZ marking &amp; face measurement · sign in</div>
+    </div>
+    <div class="card">
+      <h3 class="sec">Identify yourself</h3>
+      <p class="hint" style="margin:0 0 16px">
+        Every record you create is signed with your name and employee number and cannot
+        be edited afterwards. <span class="clause">STD-201 §9.1</span>
+      </p>
+      <div id="ulist">
+        ${USERS.map((u,i)=>`<button class="pick" data-i="${i}">
+          <span><b>${esc(u.name)}</b><br><span>${esc(u.role)}</span></span>
+          <span>${esc(u.employeeNo)}</span></button>`).join('')}
+      </div>
+      <hr class="div">
+      <label class="f" for="pin">Cap-lamp / PIN</label>
+      <input type="password" id="pin" inputmode="numeric" placeholder="Any 4 digits for this prototype">
+      <button class="btn" id="go" disabled>Sign in</button>
+      <p class="hint">Credentials are cached on the device so you can sign in underground
+        with no network. <span class="clause">Brief §5, §31</span></p>
+    </div>
+  </div></div>`;
+
+  let pickIdx = null;
+  const refresh = ()=>{
+    const pin=document.getElementById('pin').value.trim();
+    document.getElementById('go').disabled = !(pickIdx!==null && pin.length>=4);
+  };
+  app.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{
+    app.querySelectorAll('.pick').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); pickIdx=+b.dataset.i; refresh();
+  });
+  document.getElementById('pin').oninput = refresh;
+  document.getElementById('go').onclick = async ()=>{
+    session = {...USERS[pickIdx]};
+    await put('session', session);
+    shift = newShift(); await put('shift:current', shift);
+    stage='reentry'; renderShell();
+  };
+}
+
+/* ═══ 8 · RE-ENTRY BOARD ══════════════════════════════════════════════
+   Fed by the Re-entry App. A workplace that is not cleared cannot be
+   opened — the button is disabled, not merely warned about. */
+
+function renderReentry(app){
+  app.innerHTML = `
+  <div class="stage"><div class="stagebox" style="max-width:760px">
+    <div class="brandbig">
+      <div class="b1">Re-entry Board</div>
+      <div class="b2">${esc(session.name)} · ${esc(session.section)}</div>
+    </div>
+    <div class="note info"><span class="mk">↔</span><div>
+      Live from the <b>Re-entry App</b>. Workplaces appear here once examination is complete.
+      Where the miner has selected <b>face marking</b>, the bord is queued to you automatically
+      and its blast number, advance, peg and face dimensions carry across — you do not retype them.
+    </div></div>
+    <div id="feedbox"><div class="empty">Contacting re-entry system…</div></div>
+    <button class="btn ghost" id="refresh">Refresh board</button>
+    <button class="btn ghost" id="out" style="margin-top:12px">Sign out</button>
+  </div></div>`;
+
+  document.getElementById('out').onclick = async()=>{
+    session=null; place=null; shift=null;
+    await put('session',null); stage='login'; renderShell();
+  };
+  document.getElementById('refresh').onclick = ()=>loadFeed();
+
+  async function loadFeed(){
+    const box=document.getElementById('feedbox');
+    box.innerHTML='<div class="empty">Contacting re-entry system…</div>';
+    try{
+      reentryFeed = await fetchReentryFeed(); feedFetchedAt=nowTS();
+    }catch(e){
+      box.innerHTML='<div class="note stop"><span class="mk">!</span><div>Re-entry system '+
+        'unreachable. Records already cached on this device are still available. '+
+        'Do not enter any workplace that has not been cleared.</div></div>'; return;
+    }
+    const mine = assignedToMe();
+    box.innerHTML = `
+      <div class="stats">
+        <div class="stat"><div class="num">${mine.length}</div><div class="lbl">Queued to you</div></div>
+        <div class="stat"><div class="num">${reentryFeed.filter(r=>r.reentry.status==='cleared').length}</div><div class="lbl">Cleared</div></div>
+        <div class="stat hot"><div class="num">${reentryFeed.filter(r=>r.reentry.status!=='cleared').length}</div><div class="lbl">Not cleared</div></div>
+      </div>
+      ${mine.length?`<h3 class="sec">Queued to you — miner selected face marking</h3>`:''}
+      ${mine.map(recCard).join('')}
+      <h3 class="sec" style="margin-top:22px">All workplaces on the board</h3>
+      ${reentryFeed.filter(r=>!mine.includes(r)).map(recCard).join('')}
+      <p class="hint">Board read ${fmtTS(feedFetchedAt)}</p>`;
+    box.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openPlace(b.dataset.open));
+  }
+  loadFeed();
+}
+
+function recCard(r){
+  const st=r.reentry.status, ok=st==='cleared';
+  const mk=(r.minerTask.tasks||[]).includes('face_marking');
+  const gas=r.reentry.gas;
+  return `<div class="rec ${st}">
+    <div class="rh">
+      <span class="rn">${esc(r.bord)}</span>
+      <span class="tag ${ok?'sync':st==='held'?'stop':'pend'}">${ok?'cleared for entry':st==='held'?'held — do not enter':'awaiting examination'}</span>
+    </div>
+    <div class="rm">
+      ${esc(r.level)} · ${esc(r.section)} Section · ${esc(LIMITS[r.headingType].label)}<br>
+      Blast <b>${esc(r.blastNumber)}</b> at ${fmtTS(r.blastAt)} · advance <b>${r.advance} m</b><br>
+      Face <b>${r.face.length} m</b> long · <b>${r.face.width} m</b> wide · <b>${r.face.height} m</b> high<br>
+      ${ok?`Cleared by <b>${esc(r.reentry.clearedBy)}</b> at ${fmtT(r.reentry.clearedAt)}`
+          :`<b style="color:var(--rust)">${esc(r.reentry.note)}</b>`}
+      ${gas?`<br>Gas: CH₄ <b>${gas.ch4}%</b> · CO <b>${gas.co} ppm</b>`:''}
+    </div>
+    <div class="taskchips">
+      ${(r.minerTask.tasks||[]).map(t=>`<span class="tchip ${t==='face_marking'?'mk':''}">${t.replace('_',' ')}</span>`).join('')
+        || '<span class="tchip" style="background:none;color:var(--faint);border-color:var(--line)">no task selected</span>'}
+    </div>
+    ${r.minerTask.selectedBy?`<div class="rm" style="margin-top:8px">Selected by <b>${esc(r.minerTask.selectedBy)}</b> at ${fmtT(r.minerTask.selectedAt)}</div>`:''}
+    <button class="btn ${mk?'':'ghost'} sm" style="width:100%;margin-top:14px" data-open="${r.id}" ${ok?'':'disabled'}>
+      ${ok?(mk?'Open — start procedure':'Open workplace'):'Locked by re-entry'}
+    </button>
+  </div>`;
+}
+
+async function openPlace(id){
+  const r = reentryFeed.find(x=>x.id===id);
+  if(!r || !canOpen(r)){ flash('Workplace not cleared for entry',true); return; }
+  place = {
+    reentryId:r.id, level:r.level, section:r.section, bord:r.bord,
+    headingType:r.headingType, blastNumber:r.blastNumber, blastAt:r.blastAt,
+    advance:r.advance, peg:r.peg, pegDistance:r.pegDistance,
+    faceLength:r.face.length, faceWidth:r.face.width, faceHeight:r.face.height,
+    clearedBy:r.reentry.clearedBy, clearedAt:r.reentry.clearedAt,
+    minerTasks:r.minerTask.tasks, minerBy:r.minerTask.selectedBy,
+  };
+  shift.placeId = r.id;
+  await put('place', place); await put('shift:current', shift);
+  stage='app'; VIEW = gates().pre==='done' ? 'access' : 'preshift';
+  renderShell();
+}
+
+/* ═══ 9 · PRE-SHIFT (surface) ═════════════════════════════════════════ */
+
+function checkRow(groupKey,key,label,clause,state,failable){
+  const on = state[key]===true, bad = state[key]==='fail';
+  return `<div class="check ${on?'on':bad?'fail':''}" data-grp="${groupKey}" data-k="${esc(key)}">
+    <div class="box">✓</div>
+    <div class="txt">${esc(label)}<small>${esc(clause)}</small></div>
+    ${failable?`<button class="flag" data-fail="${esc(key)}" data-grp="${groupKey}">${bad?'Reported':'Report'}</button>`:''}
+  </div>`;
+}
+function checkGroup(title,groupKey,list,state,failable){
+  const done=list.filter(x=>state[x[0]]===true).length;
+  return `<div class="card ${done===list.length?'ok':''}">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <h3 class="sec" style="margin-bottom:14px">${title}</h3>
+      <span class="clause">${done} / ${list.length}</span>
+    </div>
+    ${list.map(x=>checkRow(groupKey,x[0],x[0],x[1],state,failable)).join('')}
+    <button class="btn ghost sm" style="width:100%;margin-top:10px" data-all="${groupKey}">Confirm all checked</button>
+  </div>`;
+}
+
+function renderPreshift(main){
+  const s=shift;
+  main.innerHTML = `
+  <div class="eyebrow">Stage 1 · surface</div>
+  <h2 class="title">Pre-shift preparation</h2>
+  <p class="sub">Complete before proceeding underground. The access gate stays locked until
+    every item here is confirmed. <span class="clause">STD-201 §8.1, §8.2, §9.5, §9.6.1, §9.6.2</span></p>
+
+  <div class="card pri">
+    <h3 class="sec">Shift and planning</h3>
+    <div class="grid g3">
+      <div><label class="f" for="shname">Shift</label>
+        <select id="shname">${['Morning','Afternoon','Night'].map(x=>
+          `<option ${s.shiftName===x?'selected':''}>${x}</option>`).join('')}</select></div>
+      <div><label class="f" for="tick">Tick sheet reference <span class="clause">§9.6.1</span></label>
+        <input type="text" id="tick" class="num" value="${esc(s.tickSheetRef)}" placeholder="Signed at planning meeting"></div>
+      <div><label class="f">Started</label>
+        <input type="text" class="num" value="${fmtTS(s.startedAt)}" disabled></div>
+    </div>
+    <p class="hint">The tick sheet signed off at the planning meeting is the planning basis for
+      the month's ends and feeds the Stope Marking Tally, Form STD2.1A. <span class="clause">§9.2, §9.6.1</span></p>
+  </div>
+
+  ${checkGroup('Underground register','register',REGISTER,s.register,false)}
+  ${checkGroup('PPE inspection','ppe',PPE,s.ppe,true)}
+  ${checkGroup('Tools and equipment — minimum required','tools',TOOLS,s.tools,true)}
+  ${checkGroup('Transport of men and equipment','transport',TRANSPORT,s.transport,false)}
+  ${checkGroup('XRF and log book','xrf',XRF_PREP,s.xrf,false)}
+
+  <div class="card">
+    <h3 class="sec">Defects reported to supervisor</h3>
+    <textarea id="defects" placeholder="Missing, inadequate or defective PPE / tools. The crew must report these. §8.1, §8.2">${esc(s.defects)}</textarea>
+  </div>
+
+  <div class="card ${s.risksAck?'ok':'hot'}">
+    <h3 class="sec">Risk acknowledgement <span class="clause">§8.3.1–8.3.3</span></h3>
+    ${Object.entries(RISKS).map(([g,items])=>`
+      <div style="margin-bottom:14px">
+        <div class="clause" style="margin-bottom:8px;color:var(--paint)">${g.toUpperCase()} RISKS</div>
+        <div class="chips">${items.map(i=>`<span class="chip" style="pointer-events:none;height:auto;padding:10px 14px;font-size:14px">${esc(i)}</span>`).join('')}</div>
+      </div>`).join('')}
+    <div class="check ${s.risksAck?'on':''}" data-ack="1">
+      <div class="box">✓</div>
+      <div class="txt">I have read these risks and briefed the team on them.
+        <small>Task instructions given to team · §8.1</small></div>
+    </div>
+  </div>
+
+  <button class="btn" id="toTeam">Continue to team engagement</button>`;
+
+  wireChecks(main);
+  main.querySelector('#shname').onchange=e=>{ shift.shiftName=e.target.value; put('shift:current',shift); };
+  main.querySelector('#tick').oninput=e=>{ shift.tickSheetRef=e.target.value; put('shift:current',shift); };
+  main.querySelector('#defects').oninput=e=>{ shift.defects=e.target.value; put('shift:current',shift); };
+  main.querySelector('[data-ack]').onclick=()=>{ shift.risksAck=!shift.risksAck; put('shift:current',shift); render(); };
+  main.querySelector('#toTeam').onclick=()=>setView('team');
+}
+
+function wireChecks(root){
+  root.querySelectorAll('.check[data-grp]').forEach(el=>{
+    el.onclick=(ev)=>{
+      if(ev.target.dataset.fail!==undefined) return;
+      const g=el.dataset.grp, k=el.dataset.k;
+      shift[g][k] = shift[g][k]===true ? undefined : true;
+      put('shift:current',shift); render();
+    };
+  });
+  root.querySelectorAll('[data-fail]').forEach(b=>{
+    b.onclick=(ev)=>{ ev.stopPropagation();
+      const g=b.dataset.grp,k=b.dataset.fail;
+      shift[g][k] = shift[g][k]==='fail' ? undefined : 'fail';
+      put('shift:current',shift); render();
+      flash('Defect recorded — report to supervisor',true);
+    };
+  });
+  root.querySelectorAll('[data-all]').forEach(b=>{
+    b.onclick=()=>{
+      const g=b.dataset.all;
+      const src={register:REGISTER,ppe:PPE,tools:TOOLS,transport:TRANSPORT,xrf:XRF_PREP,
+                 access:ACCESS,readiness:READINESS}[g];
+      src.forEach(x=>{ if(shift[g][x[0]]!=='fail') shift[g][x[0]]=true; });
+      put('shift:current',shift); render();
+    };
+  });
+}
+
+/* ═══ 10 · TEAM ENGAGEMENT ════════════════════════════════════════════ */
+
+function renderTeam(main){
+  const s=shift;
+  main.innerHTML=`
+  <div class="eyebrow">Stage 1b · surface</div>
+  <h2 class="title">Team and workmate engagement</h2>
+  <p class="sub">The Geo-Tech gives task instructions to the team and inspects their PPE.
+    Each person is recorded by name. <span class="clause">STD-201 §8.1</span></p>
+
+  <div class="card">
+    <h3 class="sec">Add team member</h3>
+    <div class="grid g3">
+      <div><label class="f" for="tmN">Name</label><input type="text" id="tmN"></div>
+      <div><label class="f" for="tmNo">Employee no.</label><input type="text" id="tmNo" class="num"></div>
+      <div><label class="f" for="tmR">Role</label>
+        <select id="tmR"><option>Assistant</option><option>Sampler</option><option>Miner</option>
+        <option>Shift Boss</option><option>Team Leader</option><option>Trainee</option><option>Visitor</option></select></div>
+    </div>
+    <button class="btn ghost" id="tmAdd">Add to team</button>
+  </div>
+
+  ${s.team.length?s.team.map((m,i)=>`
+    <div class="item ${m.ppeOk&&m.briefed?'':'hot'}">
+      <div class="ih"><span class="it">${esc(m.name)}</span>
+        <span class="ts">${esc(m.role)} · ${esc(m.no)}</span></div>
+      <div class="check ${m.ppeOk?'on':''}" data-tm="${i}" data-fld="ppeOk">
+        <div class="box">✓</div><div class="txt">PPE inspected and adequate<small>§8.1</small></div></div>
+      <div class="check ${m.briefed?'on':''}" data-tm="${i}" data-fld="briefed">
+        <div class="box">✓</div><div class="txt">Task instruction given and understood<small>§8.1</small></div></div>
+      <button class="btn ghost sm" data-rm="${i}" style="margin-top:8px">Remove</button>
+    </div>`).join(''):'<div class="empty">No team members recorded yet</div>'}
+
+  <div class="card ${s.teamInstructed?'ok':''}">
+    <div class="check ${s.teamInstructed?'on':''}" data-tinstr="1">
+      <div class="box">✓</div>
+      <div class="txt">Task instructions given to the whole team and PPE inspected
+        <small>Geo-Tech declaration · §8.1</small></div>
+    </div>
+    <p class="hint">Working alone is permitted by the standard, but the declaration is still
+      required so the record shows who was present.</p>
+  </div>
+
+  <div class="btnrow">
+    <button class="btn ghost" id="back">Back to pre-shift</button>
+    <button class="btn" id="next">Continue</button>
+  </div>`;
+
+  main.querySelector('#tmAdd').onclick=()=>{
+    const n=main.querySelector('#tmN').value.trim();
+    if(!n){ flash('Name required',true); return; }
+    s.team.push({name:n,no:main.querySelector('#tmNo').value.trim(),
+                 role:main.querySelector('#tmR').value,ppeOk:false,briefed:false});
+    put('shift:current',s); render();
+  };
+  main.querySelectorAll('[data-tm]').forEach(el=>el.onclick=()=>{
+    const m=s.team[+el.dataset.tm]; m[el.dataset.fld]=!m[el.dataset.fld];
+    put('shift:current',s); render();
+  });
+  main.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{
+    s.team.splice(+b.dataset.rm,1); put('shift:current',s); render();
+  });
+  main.querySelector('[data-tinstr]').onclick=()=>{
+    s.teamInstructed=!s.teamInstructed; put('shift:current',s); render();
+  };
+  main.querySelector('#back').onclick=()=>setView('preshift');
+  main.querySelector('#next').onclick=()=>{
+    if(gates().pre==='done') setView('access');
+    else { flash('Pre-shift not complete',true); setView('preshift'); }
+  };
+}
+/* ═══ 11 · ACCESS GATE (at the end) ═══════════════════════════════════ */
+
+function renderAccess(main){
+  const s=shift, g=gates();
+  main.innerHTML=`
+  <div class="eyebrow">Stage 2 · at the end</div>
+  <h2 class="title">Workplace access</h2>
+  <p class="sub">Nothing can be logged, marked or measured until this record is complete.
+    <span class="clause">STD-201 §8.3, §9.2, §9.5.ii, §9.5.v</span></p>
+
+  <div class="note go"><span class="mk">✓</span><div>
+    <b>${esc(place.bord)}</b> was cleared for re-entry by <b>${esc(place.clearedBy)}</b>
+    at ${fmtT(place.clearedAt)}. Blast <b>${esc(place.blastNumber)}</b>,
+    advance <b>${place.advance} m</b>. Miner selected: ${(place.minerTasks||[]).join(', ')||'—'}.
+  </div></div>
+
+  <div class="note stop"><span class="mk">!</span><div>
+    Access may only be denied for unsafe conditions — poor support, fall of ground, methane.
+    <b>Do not enter a working place if you have any reason to suspect it may be unsafe.</b>
+    If a place is barricaded off, never cross the barrier, whether a single strand of wire or a
+    substantial barricade. <span class="clause">§9.5.iii, §9.5.v</span>
+  </div></div>
+
+  ${checkGroup('Access, permission and area certification','access',ACCESS,s.access,false)}
+  ${checkGroup('End readiness — hard gate','readiness',READINESS,s.readiness,false)}
+
+  <div class="card">
+    <h3 class="sec">Line management sign-off</h3>
+    <div class="grid g2">
+      <div><label class="f" for="accBy">Miner / Shift Boss in charge</label>
+        <input type="text" id="accBy" value="${esc(s.accessBy)}" placeholder="Name and designation"></div>
+      <div><label class="f">Recorded at</label>
+        <input type="text" class="num" value="${s.accessAt?fmtTS(s.accessAt):'not yet certified'}" disabled></div>
+    </div>
+    <p class="hint">The miner signs the Geo-Tech's field book as acknowledgement, and both sign the
+      daily marking sheet. <span class="clause">§8.3, §9.6.2</span></p>
+  </div>
+
+  <button class="btn danger" id="abort">Abandon — conditions unsafe</button>
+  <button class="btn" id="certify" ${g.access==='done'?'':'disabled'}>
+    ${g.access==='done'?'Access certified — begin face log':'Complete all items above'}</button>`;
+
+  wireChecks(main);
+  main.querySelector('#accBy').oninput=e=>{ s.accessBy=e.target.value; put('shift:current',s); };
+  main.querySelector('#abort').onclick=async()=>{
+    await saveEntry('note',{category:'Access abandoned',
+      text:'Workplace '+place.bord+' not entered — conditions unsafe. §9.5.iii'});
+    place=null; shift.placeId=null; await put('place',null); await put('shift:current',shift);
+    stage='reentry'; renderShell();
+  };
+  main.querySelector('#certify').onclick=async()=>{
+    if(!s.accessBy.trim()){ flash('Record the miner in charge',true); return; }
+    s.accessAt=nowTS(); await put('shift:current',s);
+    await saveEntry('engagement',{type:'Access certified', miner:s.accessBy,
+      team:s.team.map(m=>m.name+' ('+m.role+')')});
+    setView('facelog');
+  };
+}
+
+/* ═══ 12 · FACE LOG ═══════════════════════════════════════════════════ */
+
+function renderFaceLog(main){
+  const mine = cache.faceLog.filter(e=>e.shiftId===shift.id);
+  main.innerHTML=`
+  <div class="eyebrow">Stage 3 · at the face</div>
+  <h2 class="title">Face log</h2>
+  <p class="sub">Peg reference, advance and face dimensions. Values carried from the re-entry
+    record are shown pre-filled — correct them if the face differs.
+    <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>
+
+  <div class="card pri">
+    <h3 class="sec">Carried from re-entry — check and confirm</h3>
+    <div class="grid g3">
+      <div><label class="f" for="fPeg">Survey peg</label>
+        <input type="text" id="fPeg" class="num" value="${esc(place.peg)}"></div>
+      <div><label class="f" for="fPegD">Peg to face (m) <span class="clause">§9.8.i</span></label>
+        <input type="number" step="0.1" id="fPegD" class="num" value="${place.pegDistance}"></div>
+      <div><label class="f" for="fBlast">Blast number</label>
+        <input type="text" id="fBlast" class="num" value="${esc(place.blastNumber)}"></div>
+    </div>
+    <div class="grid g4">
+      <div><label class="f" for="fAdv">Advance (m)</label>
+        <input type="number" step="0.1" id="fAdv" class="num" value="${place.advance}"></div>
+      <div><label class="f" for="fLen">Face length (m) <span class="clause">§9.8.vi</span></label>
+        <input type="number" step="0.1" id="fLen" class="num" value="${place.faceLength}"></div>
+      <div><label class="f" for="fWid"><b>Bord width (m)</b></label>
+        <input type="number" step="0.1" id="fWid" class="num" value="${place.faceWidth}"></div>
+      <div><label class="f" for="fHgt"><b>Bord height (m)</b></label>
+        <input type="number" step="0.1" id="fHgt" class="num" value="${place.faceHeight}"></div>
+    </div>
+    <div><label class="f" for="fFP">Distance to capital footwall border (m)</label>
+      <input type="number" step="0.1" id="fFP" class="num" placeholder="Face marking sheet header"></div>
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Face condition</h3>
+    <label class="f">Hangingwall condition</label>
+    <div class="chips" id="cHW">${['Good','Fair','Jointed','Loose / brows','Poor'].map(x=>
+      `<button class="chip" data-v="${x}">${x}</button>`).join('')}</div>
+    <label class="f" style="margin-top:16px">Footwall condition</label>
+    <div class="chips" id="cFW">${['Clean to footwall','Partly lashed','Muck on footwall','Wet / water'].map(x=>
+      `<button class="chip" data-v="${x}">${x}</button>`).join('')}</div>
+    <label class="f" style="margin-top:16px">Support observed</label>
+    <div class="chips" id="cSup">${['Roof bolts','Mesh','Straps','Timber','None required','Outstanding'].map(x=>
+      `<button class="chip" data-v="${x}">${x}</button>`).join('')}</div>
+    <label class="f" style="margin-top:16px" for="fNote">Notes</label>
+    <textarea id="fNote" placeholder="Sockets, brows, water, anything the next shift must know"></textarea>
+  </div>
+
+  <button class="btn" id="save">Save face log</button>
+
+  <hr class="div">
+  <h3 class="sec">This shift — ${mine.length} log(s)</h3>
+  ${mine.length?mine.map(e=>`<div class="item">
+    <div class="ih"><span class="it">${esc(e.bord||place.bord)} · blast ${esc(e.blastNumber)}</span>
+      <span class="ts">${fmtTS(e.ts)}</span></div>
+    <div class="ib">Advance <b>${e.advance} m</b> · face <b>${e.faceLength} m</b> long ·
+      <b>${e.width} m</b> wide · <b>${e.height} m</b> high<br>
+      Peg ${esc(e.peg)} at <b>${e.pegDistance} m</b><br>
+      H/W: ${esc(e.hwCond)||'—'} · F/W: ${esc(e.fwCond)||'—'} · Support: ${esc(e.support)||'—'}
+      ${e.note?'<br>'+esc(e.note):''}</div>
+    <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
+  </div>`).join(''):'<div class="empty">No face log recorded for this shift</div>'}`;
+
+  let sel={hwCond:'',fwCond:'',support:''};
+  const wireChips=(id,key)=>main.querySelectorAll('#'+id+' .chip').forEach(b=>b.onclick=()=>{
+    main.querySelectorAll('#'+id+' .chip').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); sel[key]=b.dataset.v; });
+  wireChips('cHW','hwCond'); wireChips('cFW','fwCond'); wireChips('cSup','support');
+
+  main.querySelector('#save').onclick=async()=>{
+    const v=id=>main.querySelector('#'+id).value;
+    if(!v('fLen')||!v('fWid')||!v('fHgt')){ flash('Face length, width and height required',true); return; }
+    place.peg=v('fPeg'); place.pegDistance=num(v('fPegD')); place.advance=num(v('fAdv'));
+    place.faceLength=num(v('fLen')); place.faceWidth=num(v('fWid')); place.faceHeight=num(v('fHgt'));
+    await put('place',place);
+    await saveEntry('faceLog',{bord:place.bord, peg:v('fPeg'), pegDistance:num(v('fPegD')),
+      blastNumber:v('fBlast'), advance:num(v('fAdv')), faceLength:num(v('fLen')),
+      width:num(v('fWid')), height:num(v('fHgt')), fpBorder:num(v('fFP')),
+      ...sel, note:v('fNote')});
+    render();
+  };
+}
+
+/* ═══ 13 · BMSZ MARKING ═══════════════════════════════════════════════
+   Rule R4 is the hard block: where a channel sample has been requested,
+   a continuous line may NOT be painted. §9.7 is emphatic about this. */
+
+function sampleDue(blast){ const n=parseInt(blast,10); return !isNaN(n) && n%2===0; }
+
+function renderBmsz(main){
+  const mine=cache.bmsz.filter(e=>e.shiftId===shift.id);
+  const due=sampleDue(place.blastNumber);
+  main.innerHTML=`
+  <div class="eyebrow">Stage 4 · at the face</div>
+  <h2 class="title">BMSZ identification and marking</h2>
+  <p class="sub">Visual identification first, then confirmation. Marking type is decided by the
+    system from what you record — it is not a free choice.
+    <span class="clause">STD-201 §9.6.3, §9.7 · procedure UNKI-MIN-MRM-PRO-200</span></p>
+
+  <div class="note ${due?'warn':'info'}"><span class="mk">${due?'◆':'i'}</span><div>
+    Blast number <b>${esc(place.blastNumber)}</b> — this end is due for
+    <b>${due?'channel sampling':'XRF confirmation'}</b> this round.
+    All ends are sampled every second blast and every other blast is confirmed by XRF.
+    <span class="clause">§9.6.3</span>
+  </div></div>
+
+  <div class="card">
+    <h3 class="sec">Step 1 · Visual identification <span class="clause">first, always</span></h3>
+    <label class="f">BMSZ visually identified?</label>
+    <div class="chips" id="vis">
+      <button class="chip" data-v="clear">Clear and continuous</button>
+      <button class="chip" data-v="partial">Partly visible</button>
+      <button class="chip" data-v="none">Not visible</button>
+    </div>
+    <label class="f" style="margin-top:16px" for="bLith">Hangingwall / footwall lithology</label>
+    <input type="text" id="bLith" placeholder="e.g. plagioclase pyroxenite / pyroxenite">
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Step 2 · XRF confirmation</h3>
+    <p class="hint" style="margin:0 0 14px">Enter your name and the sample id / end into the
+      instrument so the readings can be matched on download. The Great Dyke has a peculiar Cu and
+      tNi profile — the sharp drop corresponds to the Peak Platinum Value.
+      <span class="clause">§9.6.3, §9.7</span></p>
+    <div class="grid g3">
+      <div><label class="f" for="xId">End ID entered on instrument</label>
+        <input type="text" id="xId" class="num" value="${esc(place.bord)}-B${esc(place.blastNumber)}"></div>
+      <div><label class="f" for="xCu">Cu profile</label>
+        <select id="xCu"><option value="">—</option><option>Sharp drop identified</option>
+          <option>Gradual / unclear</option><option>Flat — no profile</option></select></div>
+      <div><label class="f" for="xNi">tNi profile</label>
+        <select id="xNi"><option value="">—</option><option>Sharp drop identified</option>
+          <option>Gradual / unclear</option><option>Flat — no profile</option></select></div>
+    </div>
+    <div class="grid g2">
+      <div><label class="f" for="xPPV">PPV position — height above footwall (m)</label>
+        <input type="number" step="0.01" id="xPPV" class="num"></div>
+      <div><label class="f" for="xReads">Number of readings taken</label>
+        <input type="number" id="xReads" class="num" value="3"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Step 3 · Confidence and second opinion</h3>
+    <label class="f">Confidence in BMSZ position</label>
+    <div class="chips" id="conf">
+      <button class="chip" data-v="High">High</button>
+      <button class="chip" data-v="Medium">Medium</button>
+      <button class="chip" data-v="Low">Low — in doubt</button>
+    </div>
+    <div id="secondBox" style="display:none;margin-top:16px">
+      <div class="note warn"><span class="mk">◆</span><div>
+        A second opinion may be sought from a Geological Technician in a nearby section.
+        <b>This does not transfer responsibility.</b> The Section Geologist will be notified
+        automatically. <span class="clause">§9.6.3</span></div></div>
+      <label class="f" for="secName">Second opinion from</label>
+      <input type="text" id="secName" placeholder="Technician name and section">
+    </div>
+  </div>
+
+  <div class="card" id="decisionCard">
+    <h3 class="sec">Step 4 · Channel sampling decision</h3>
+    <div class="check" data-req="1" id="reqChk">
+      <div class="box">✓</div>
+      <div class="txt">Channel samples requested from the sampler
+        <small>Recorded in the Channel Sampling Request Book · §9.7</small></div>
+    </div>
+    <div id="chanBox" style="display:none">
+      <label class="f" for="chanPos">Position of channel to be cut</label>
+      <input type="text" id="chanPos" placeholder="Marked on face and Sampler advised · §9.7">
+    </div>
+  </div>
+
+  <div id="markBox"></div>
+  <button class="btn" id="saveMark">Record BMSZ marking</button>
+
+  <hr class="div">
+  <h3 class="sec">This shift — ${mine.length} marking record(s)</h3>
+  ${mine.length?mine.map(e=>`<div class="item ${e.markType==='indicative'?'hot':''}">
+    <div class="ih"><span class="it">${e.markType==='continuous'?'Continuous yellow line':'Indicative marks only'}</span>
+      <span class="ts">${fmtTS(e.ts)}</span></div>
+    <div class="ib">Visual: <b>${esc(e.visual)}</b> · confidence <b>${esc(e.confidence)}</b><br>
+      Cu ${esc(e.cu)||'—'} · tNi ${esc(e.ni)||'—'}${e.ppv!=null?' · PPV at <b>'+e.ppv+' m</b>':''}<br>
+      ${e.sampleRequested?'<b style="color:var(--rust)">Channel sample requested — stopped end logged</b><br>':''}
+      ${e.secondOpinion?'Second opinion: <b>'+esc(e.secondOpinion)+'</b> — responsibility not transferred<br>':''}
+      </div>
+    <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
+  </div>`).join(''):'<div class="empty">No marking recorded for this shift</div>'}`;
+
+  let st={visual:'',confidence:'',requested:false};
+  const pick=(id,key,after)=>main.querySelectorAll('#'+id+' .chip').forEach(b=>b.onclick=()=>{
+    main.querySelectorAll('#'+id+' .chip').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); st[key]=b.dataset.v; if(after) after(); paintDecision(); });
+  pick('vis','visual');
+  pick('conf','confidence',()=>{
+    main.querySelector('#secondBox').style.display =
+      (st.confidence||'').indexOf('Low')===0 ? 'block':'none';
+  });
+
+  main.querySelector('#reqChk').onclick=()=>{
+    st.requested=!st.requested;
+    main.querySelector('#reqChk').classList.toggle('on',st.requested);
+    main.querySelector('#chanBox').style.display = st.requested?'block':'none';
+    paintDecision();
+  };
+
+  function paintDecision(){
+    const box=main.querySelector('#markBox');
+    if(st.requested){
+      box.innerHTML=`<div class="note stop"><span class="mk">⛔</span><div>
+        <b>Continuous line marking is blocked.</b> Where channel samples have been requested the
+        BMSZ shall not and will not be marked as a continuous line on that face. Only indicative
+        marks may be placed on the expected BMSZ position, as a guide for channel sampling, so the
+        end is not drilled for blasting.<br><br>
+        This end will be entered in the <b>Geology Stopped End Log Book</b> and logged out when the
+        laboratory result is released. Sign-off chain: Geological Technician → Geologist →
+        Chief Geologist → MRM Manager. <span class="clause">STD-201 §9.7 · rule R4</span>
+      </div></div>`;
+    } else if(st.visual && st.confidence && st.confidence.indexOf('Low')!==0){
+      box.innerHTML=`<div class="note go"><span class="mk">✓</span><div>
+        Mark the BMSZ with a <b>continuous yellow line on the face</b>, ±2.5 m thick.
+        Paint the BMSZ on the <b>sidewalls continuous for 2 m</b> to allow rig alignment.
+        <span class="clause">§9.6.3</span></div></div>
+        <div class="card"><div class="check" data-mk="face"><div class="box">✓</div>
+          <div class="txt">Continuous yellow line painted on face<small>±2.5 m thick · §9.6.3</small></div></div>
+        <div class="check" data-mk="wall"><div class="box">✓</div>
+          <div class="txt">Sidewalls painted continuous for 2 m<small>Rig alignment · §9.6.3</small></div></div></div>`;
+      box.querySelectorAll('[data-mk]').forEach(el=>el.onclick=()=>el.classList.toggle('on'));
+    } else {
+      box.innerHTML=`<div class="note info"><span class="mk">i</span><div>
+        Complete visual identification and confidence to see the marking instruction.</div></div>`;
+    }
+  }
+  paintDecision();
+
+  main.querySelector('#saveMark').onclick=async()=>{
+    if(!st.visual||!st.confidence){ flash('Visual identification and confidence required',true); return; }
+    const v=id=>{const el=main.querySelector('#'+id); return el?el.value:'';};
+    const markType = st.requested ? 'indicative' : 'continuous';
+    await saveEntry('bmsz',{visual:st.visual, confidence:st.confidence, lithology:v('bLith'),
+      endId:v('xId'), cu:v('xCu'), ni:v('xNi'), ppv:num(v('xPPV')), readings:num(v('xReads')),
+      secondOpinion:v('secName'), sampleRequested:st.requested, channelPosition:v('chanPos'),
+      markType, blastNumber:place.blastNumber, sampleDue:due});
+    if(st.requested) await saveEntry('note',{category:'Stopped End Log',
+      text:'End '+place.bord+' blast '+place.blastNumber+' entered in Geology Stopped End Log Book — '+
+           'production awaiting channel sample result. Requires sign-off by Geological Technician, '+
+           'Geologist, Chief Geologist and MRM Manager. §9.7'});
+    render();
+  };
+}
+/* ═══ 14 · BLAST OFFSET RECORD ════════════════════════════════════════
+
+   THE CORE MODULE.
+
+   An "offset" here is the deviation of the blasted profile from the
+   design cut — over-break and under-break caused by the blast. It is not
+   geological displacement; faults and dykes are recorded separately under
+   Structures.
+
+   Measurement geometry is fixed by §9.8:
+     · taken 1 m from the face
+     · first station 1 m from the sidewall
+     · collected down-dip side → up-dip side
+     · stations at 2 m intervals (§9.8.iv — but the supplied sheets are
+       at 1 m, open decision 12.1, so both are offered)
+     · 50 m tape stretched top to bottom of bord and taut, then distometer
+       or 5 m tape used for each reading                                   */
+
+const SG = 3.1;   // pyroxenite specific gravity, t/m³ — configurable
+let OS = null;    // working offset set
+
+function newOffsetSet(){
+  const lim = LIMITS[place.headingType];
+  const iv  = 1;
+  const n   = Math.max(2, Math.floor(place.faceLength/iv)+1);
+  return { interval:iv, headingType:place.headingType, faceLength:place.faceLength,
+           advance:place.advance, blastNumber:place.blastNumber,
+           hwLimit:lim.hw, fwLimit:lim.fw,
+           stations:Array.from({length:n},()=>({hw:'',fw:'',cause:'',note:''})),
+           active:0, field:'hw', tapeTaut:false, downdipFirst:false };
+}
+function rebuildStations(iv){
+  const n=Math.max(2,Math.floor(OS.faceLength/iv)+1);
+  const old=OS.stations;
+  OS.interval=iv;
+  OS.stations=Array.from({length:n},(_,i)=>old[i*(iv===2?2:1)]||{hw:'',fw:'',cause:'',note:''});
+  OS.active=0; OS.field='hw';
+}
+function osStats(){
+  let hwB=0,fwB=0,done=0,over=0,ex=[],widths=[];
+  const planned = OS.hwLimit - OS.fwLimit;
+  OS.stations.forEach(s=>{
+    const hw=num(s.hw), fw=num(s.fw);
+    if(hw!=null&&hw>OS.hwLimit){ hwB++; over+=hw-OS.hwLimit; }
+    if(fw!=null&&fw<OS.fwLimit) fwB++;
+    if(hw!=null&&fw!=null){ done++; const w=hw-fw; widths.push(w); ex.push(w-planned); }
+  });
+  const meanW = widths.length?widths.reduce((a,b)=>a+b,0)/widths.length:null;
+  const meanEx= ex.length?ex.reduce((a,b)=>a+b,0)/ex.length:null;
+  const vol   = meanEx!=null?Math.max(0,meanEx)*OS.faceLength*(OS.advance||0):null;
+  return {hwB,fwB,done,total:OS.stations.length,planned,
+          meanOver:hwB?over/hwB:0, meanW, meanEx,
+          dilution: meanEx!=null&&planned>0 ? (meanEx/planned)*100 : null,
+          wasteVol:vol, wasteT: vol!=null?vol*SG:null};
+}
+
+function sectionSVG(){
+  const W=900,H=340,PL=64,PR=22,PY=30;
+  const top=Math.max(OS.hwLimit+0.6, ...OS.stations.map(s=>num(s.hw)||0))+0.35;
+  const bot=Math.min(OS.fwLimit-0.4, ...OS.stations.map(s=>num(s.fw)||0))-0.25;
+  const n=Math.max(OS.stations.length,2);
+  const X=i=>PL+i*(W-PL-PR)/(n-1);
+  const Y=v=>PY+((top-v)/(top-bot))*(H-PY*2-24);
+  const line=(sel)=>{let d='',open=false;
+    OS.stations.forEach((s,i)=>{const v=num(s[sel]); if(v==null){open=false;return;}
+      d+=(open?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1)+' '; open=true;}); return d;};
+  const ticks=[]; for(let v=Math.ceil(top*2)/2; v>=bot; v-=0.5) ticks.push(+v.toFixed(2));
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img"
+    aria-label="Face section showing hangingwall and footwall offsets against design limits">
+    ${ticks.map(v=>`<line x1="${PL}" x2="${W-PR}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2A2418"/>
+      <text x="${PL-10}" y="${Y(v)+5}" text-anchor="end" font-size="13" fill="#756C58"
+        font-family="monospace">${v.toFixed(2)}</text>`).join('')}
+    <rect x="${PL}" y="${Y(OS.hwLimit)}" width="${W-PL-PR}" height="${Math.max(0,Y(OS.fwLimit)-Y(OS.hwLimit))}"
+      fill="#5FB87A" opacity="0.07"/>
+    <line x1="${PL}" x2="${W-PR}" y1="${Y(OS.hwLimit)}" y2="${Y(OS.hwLimit)}" stroke="#E04A2F"
+      stroke-width="2.5" stroke-dasharray="9 6"/>
+    <text x="${W-PR}" y="${Y(OS.hwLimit)-9}" text-anchor="end" font-size="13" fill="#E04A2F"
+      font-family="monospace" letter-spacing="1">DESIGN CUT — H/W ${OS.hwLimit.toFixed(2)}</text>
+    <line x1="${PL}" x2="${W-PR}" y1="${Y(OS.fwLimit)}" y2="${Y(OS.fwLimit)}" stroke="#E04A2F"
+      stroke-width="2.5" stroke-dasharray="9 6"/>
+    <text x="${W-PR}" y="${Y(OS.fwLimit)+20}" text-anchor="end" font-size="13" fill="#E04A2F"
+      font-family="monospace" letter-spacing="1">DESIGN CUT — F/W ${OS.fwLimit.toFixed(2)}</text>
+    <line x1="${PL}" x2="${W-PR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#FFC61A" stroke-width="4"/>
+    <text x="${PL+6}" y="${Y(0)-11}" font-size="14" fill="#FFC61A" font-weight="700"
+      font-family="monospace" letter-spacing="2">BMSZ</text>
+    <path d="${line('hw')}" fill="none" stroke="#F2ECDD" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="${line('fw')}" fill="none" stroke="#B0A692" stroke-width="2.5" stroke-linejoin="round"/>
+    ${OS.stations.map((s,i)=>{
+      const hw=num(s.hw),fw=num(s.fw),on=i===OS.active;
+      const hb=hw!=null&&hw>OS.hwLimit, fb=fw!=null&&fw<OS.fwLimit;
+      return `${on?`<rect x="${X(i)-19}" y="${PY-6}" width="38" height="${H-PY*2-16}" fill="#FFC61A" opacity="0.09"/>`:''}
+        ${hw!=null?`<circle cx="${X(i)}" cy="${Y(hw)}" r="${on?9:6.5}" fill="${hb?'#E04A2F':'#5FB87A'}" stroke="#100E0A" stroke-width="2.5"/>`:''}
+        ${fw!=null?`<circle cx="${X(i)}" cy="${Y(fw)}" r="${on?9:6.5}" fill="${fb?'#E04A2F':'#5FB87A'}" stroke="#100E0A" stroke-width="2.5"/>`:''}
+        <text x="${X(i)}" y="${H-8}" text-anchor="middle" font-size="13" font-family="monospace"
+          fill="${on?'#FFC61A':'#756C58'}" font-weight="${on?700:400}">${(i*OS.interval)}</text>`;
+    }).join('')}
+    <text x="${PL}" y="${H-8}" font-size="12" fill="#756C58" font-family="monospace"
+      text-anchor="end" transform="translate(-14,0)">m</text>
+  </svg>`;
+}
+
+function renderOffsets(main){
+  if(!OS) OS=newOffsetSet();
+  const S=osStats(), lim=LIMITS[OS.headingType];
+  const cur=OS.stations[OS.active];
+  const hw=num(cur.hw), fw=num(cur.fw);
+  const hb=hw!=null&&hw>OS.hwLimit, fb=fw!=null&&fw<OS.fwLimit;
+  const bad=hb||fb;
+  const saved=cache.offsetSet.filter(e=>e.shiftId===shift.id);
+
+  main.innerHTML=`
+  <div class="eyebrow">Stage 5 · at the face — core record</div>
+  <h2 class="title">Blast offset record</h2>
+  <p class="sub">Deviation of the blasted profile from the design cut. Over-break and under-break
+    caused by the blast — geological displacement is recorded under Structures.
+    <span class="clause">STD-201 §9.8</span></p>
+
+  <div class="card">
+    <h3 class="sec">Tape set-up <span class="clause">§9.8.ii–v</span></h3>
+    <div class="check ${OS.tapeTaut?'on':''}" data-os="tapeTaut"><div class="box">✓</div>
+      <div class="txt">50 m tape stretched top to bottom of bord and taut
+        <small>Readings taken 1 m from the face, first station 1 m from the sidewall · §9.8.ii, §9.8.v</small></div></div>
+    <div class="check ${OS.downdipFirst?'on':''}" data-os="downdipFirst"><div class="box">✓</div>
+      <div class="txt">Measuring from the down-dip side to the up-dip side<small>§9.8.iii</small></div></div>
+    <div class="grid g3" style="margin-top:16px">
+      <div><label class="f">Station interval <span class="clause">open decision 12.1</span></label>
+        <div class="chips">
+          <button class="chip ${OS.interval===1?'sel':''}" data-iv="1">1 m · per sheet</button>
+          <button class="chip ${OS.interval===2?'sel':''}" data-iv="2">2 m · per §9.8.iv</button>
+        </div></div>
+      <div><label class="f">Heading type — sets the design cut</label>
+        <select id="ht">${Object.entries(LIMITS).map(([k,v])=>
+          `<option value="${k}" ${OS.headingType===k?'selected':''}>${v.label} · ${v.hw.toFixed(2)} / ${v.fw.toFixed(2)}</option>`).join('')}</select></div>
+      <div><label class="f">Design cut width</label>
+        <input type="text" class="num" value="${S.planned.toFixed(2)} m" disabled></div>
+    </div>
+  </div>
+
+  <div class="svgbox">${sectionSVG()}
+    <div class="legend">
+      <span><i style="background:#FFC61A"></i>BMSZ datum</span>
+      <span><i style="background:#E04A2F"></i>Design cut limit</span>
+      <span><i style="background:#5FB87A;border-radius:50%;height:10px;width:10px"></i>Within cut</span>
+      <span><i style="background:#E04A2F;border-radius:50%;height:10px;width:10px"></i>Over-break</span>
+    </div>
+  </div>
+
+  <div class="grid g2" style="align-items:start">
+    <div class="card ${bad?'hot':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px">
+        <div><div class="clause">STATION</div>
+          <div class="mononum" style="font-size:30px;font-weight:700">${OS.active*OS.interval} m</div></div>
+        <div style="display:flex;gap:10px">
+          <button class="btn ghost sm" id="prev" ${OS.active===0?'disabled':''} style="width:64px">◀</button>
+          <button class="btn ghost sm" id="next" ${OS.active===OS.stations.length-1?'disabled':''} style="width:64px">▶</button>
+        </div>
+      </div>
+      <button class="field ${OS.field==='hw'?'act':''} ${hb?'bad':''}" data-fld="hw">
+        <div class="fl"><span>BMSZ → hangingwall</span><span>limit ${OS.hwLimit.toFixed(2)}</span></div>
+        <div class="fv" style="color:${hw==null?'#3A3325':hb?'#E04A2F':'#F2ECDD'}">${cur.hw||'—.——'}</div>
+        <div class="fs" style="color:${hb?'#E04A2F':'#5FB87A'}">${hw==null?'':hb?('OVER-BREAK +'+(hw-OS.hwLimit).toFixed(2)+' m'):'WITHIN CUT'}</div>
+      </button>
+      <button class="field ${OS.field==='fw'?'act':''} ${fb?'bad':''}" data-fld="fw">
+        <div class="fl"><span>BMSZ → footwall</span><span>limit ${OS.fwLimit.toFixed(2)}</span></div>
+        <div class="fv" style="color:${fw==null?'#3A3325':fb?'#E04A2F':'#F2ECDD'}">${cur.fw||'—.——'}</div>
+        <div class="fs" style="color:${fb?'#E04A2F':'#5FB87A'}">${fw==null?'':fb?('OVER-BREAK +'+(OS.fwLimit-fw).toFixed(2)+' m'):'WITHIN CUT'}</div>
+      </button>
+      ${hw!=null&&fw!=null?`<div style="display:flex;gap:22px;padding:6px 4px;flex-wrap:wrap">
+        <div><div class="clause">STOPE WIDTH</div>
+          <div class="mononum" style="font-size:22px">${(hw-fw).toFixed(2)} m</div></div>
+        <div><div class="clause">VS DESIGN</div>
+          <div class="mononum" style="font-size:22px;color:${(hw-fw)-S.planned>0.01?'#E04A2F':'#5FB87A'}">
+            ${((hw-fw)-S.planned>=0?'+':'')+((hw-fw)-S.planned).toFixed(2)} m</div></div>
+      </div>`:''}
+      ${bad?`<div class="note stop" style="margin:14px 0 0"><span class="mk">!</span><div>
+        <b>Cut exceeded at this station.</b> Record what caused it — this is the record that
+        drives blast practice back at the planning meeting.</div></div>
+        <label class="f" style="margin-top:14px">Cause of over-break</label>
+        <div class="chips" id="cause">${BLAST_CAUSES.map(c=>
+          `<button class="chip ${cur.cause===c?'sel rust':''}" data-c="${esc(c)}"
+            style="height:auto;padding:12px 15px;font-size:14.5px">${esc(c)}</button>`).join('')}</div>`:''}
+    </div>
+
+    <div class="card">
+      <h3 class="sec">Entry · ${OS.field==='hw'?'hangingwall':'footwall'}</h3>
+      <div class="pad">
+        ${['7','8','9','4','5','6','1','2','3'].map(k=>`<button data-k="${k}">${k}</button>`).join('')}
+        <button data-k="−">−</button><button data-k="0">0</button><button data-k=".">.</button>
+        <button class="sm" data-k="clear">CLEAR</button>
+        <button data-k="back">⌫</button>
+        <button class="act" data-k="next">NEXT</button>
+      </div>
+      <p class="hint">Footwall readings are negative. Press − to flip the sign.
+        NEXT moves hangingwall → footwall → next station.</p>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat ${S.hwB?'hot':''}"><div class="num">${S.hwB}/${S.total}</div><div class="lbl">H/W over-break</div></div>
+    <div class="stat ${S.fwB?'hot':''}"><div class="num">${S.fwB}/${S.total}</div><div class="lbl">F/W over-break</div></div>
+    <div class="stat ${S.hwB?'hot':''}"><div class="num">${S.hwB?S.meanOver.toFixed(2):'—'}</div><div class="lbl">Mean H/W excess (m)</div></div>
+    <div class="stat"><div class="num">${S.meanW!=null?S.meanW.toFixed(2):'—'}</div><div class="lbl">Mean stope width (m)</div></div>
+    <div class="stat ${S.dilution>5?'hot':''}"><div class="num">${S.dilution!=null?S.dilution.toFixed(0)+'%':'—'}</div><div class="lbl">Over design cut</div></div>
+    <div class="stat ${S.wasteT>0?'hot':''}"><div class="num">${S.wasteT!=null?S.wasteT.toFixed(0):'—'}</div><div class="lbl">Waste tonnes est.</div></div>
+  </div>
+  <p class="hint" style="margin-top:-8px;margin-bottom:20px">
+    Waste estimate = mean excess width × face length ${OS.faceLength} m × advance ${OS.advance} m
+    × SG ${SG}. Indicative only — reconciliation is done by MRM.</p>
+
+  <button class="btn" id="saveOS" ${S.done===S.total?'':'disabled'}>
+    ${S.done===S.total?'Save blast offset record':`${S.total-S.done} station(s) still to measure`}</button>
+  <button class="btn ghost" id="loadNS3">Load worked example — NS3 12-07-10</button>
+
+  ${saved.length?`<hr class="div"><h3 class="sec">Saved this shift</h3>${saved.map(e=>`
+    <div class="item ${e.stats.hwB?'hot':''}">
+      <div class="ih"><span class="it">Blast ${esc(e.blastNumber)} · ${e.stations.length} stations</span>
+        <span class="ts">${fmtTS(e.ts)}</span></div>
+      <div class="ib">Over-break <b>${e.stats.hwB} H/W · ${e.stats.fwB} F/W</b> ·
+        mean stope width <b>${e.stats.meanW!=null?e.stats.meanW.toFixed(2):'—'} m</b> against design
+        <b>${e.stats.planned.toFixed(2)} m</b>${e.stats.dilution!=null?' · <b>'+e.stats.dilution.toFixed(0)+'%</b> over cut':''}</div>
+      <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
+    </div>`).join('')}`:''}`;
+
+  main.querySelectorAll('[data-os]').forEach(el=>el.onclick=()=>{
+    OS[el.dataset.os]=!OS[el.dataset.os]; render(); });
+  main.querySelectorAll('[data-iv]').forEach(b=>b.onclick=()=>{ rebuildStations(+b.dataset.iv); render(); });
+  main.querySelector('#ht').onchange=e=>{
+    OS.headingType=e.target.value; OS.hwLimit=LIMITS[e.target.value].hw;
+    OS.fwLimit=LIMITS[e.target.value].fw; render(); };
+  main.querySelectorAll('[data-fld]').forEach(b=>b.onclick=()=>{ OS.field=b.dataset.fld; render(); });
+  main.querySelector('#prev').onclick=()=>{ OS.active=Math.max(0,OS.active-1); OS.field='hw'; render(); };
+  main.querySelector('#next').onclick=()=>{ OS.active=Math.min(OS.stations.length-1,OS.active+1); OS.field='hw'; render(); };
+  main.querySelectorAll('#cause .chip').forEach(b=>b.onclick=()=>{
+    cur.cause = cur.cause===b.dataset.c ? '' : b.dataset.c; render(); });
+
+  main.querySelectorAll('.pad button').forEach(b=>b.onclick=()=>{
+    const k=b.dataset.k, f=OS.field;
+    if(k==='next'){ if(f==='hw') OS.field='fw';
+      else { OS.field='hw'; OS.active=Math.min(OS.stations.length-1,OS.active+1); } }
+    else if(k==='clear') cur[f]='';
+    else if(k==='back') cur[f]=String(cur[f]).slice(0,-1);
+    else if(k==='−') cur[f]=String(cur[f]).startsWith('-')?String(cur[f]).slice(1):'-'+cur[f];
+    else if(k==='.') cur[f]=String(cur[f]).includes('.')?cur[f]:(cur[f]===''?'0':cur[f])+'.';
+    else cur[f]=(cur[f]==='0'?'':cur[f])+k;
+    render();
+  });
+
+  main.querySelector('#loadNS3').onclick=()=>{
+    OS.headingType='decline'; OS.hwLimit=1.50; OS.fwLimit=-1.00;
+    OS.faceLength=7.2; OS.advance=2.1; OS.interval=1; OS.blastNumber='09';
+    const hw=[2.45,2.47,2.51,2.43,2.42,2.44,2.46,2.43];
+    const fw=[-1.32,-1.34,-1.32,-1.37,-1.34,-1.38,-1.37,-1.36];
+    OS.stations=hw.map((h,i)=>({hw:String(h),fw:String(fw[i]),cause:'',note:''}));
+    OS.active=0; OS.field='hw'; OS.tapeTaut=true; OS.downdipFirst=true;
+    render(); flash('NS3 12-07-10 loaded — every station over the cut');
+  };
+
+  main.querySelector('#saveOS').onclick=async()=>{
+    if(!OS.tapeTaut||!OS.downdipFirst){ flash('Confirm tape set-up and direction first',true); return; }
+    const miss=OS.stations.some((s,i)=>{
+      const h=num(s.hw),f=num(s.fw);
+      return ((h!=null&&h>OS.hwLimit)||(f!=null&&f<OS.fwLimit)) && !s.cause; });
+    if(miss){ flash('Every over-break station needs a cause',true); return; }
+    await saveEntry('offsetSet',{blastNumber:OS.blastNumber, headingType:OS.headingType,
+      interval:OS.interval, faceLength:OS.faceLength, advance:OS.advance,
+      hwLimit:OS.hwLimit, fwLimit:OS.fwLimit,
+      stations:OS.stations.map((s,i)=>({dist:i*OS.interval, hw:num(s.hw), fw:num(s.fw),
+        width:(num(s.hw)!=null&&num(s.fw)!=null)?+(num(s.hw)-num(s.fw)).toFixed(2):null,
+        cause:s.cause})),
+      stats:osStats()});
+    OS=newOffsetSet(); render();
+  };
+}
+
+/* ═══ 15 · STRUCTURES ═════════════════════════════════════════════════ */
+
+function renderStructure(main){
+  const mine=cache.structure.filter(e=>e.shiftId===shift.id);
+  main.innerHTML=`
+  <div class="eyebrow">At the face</div>
+  <h2 class="title">Structures and joints</h2>
+  <p class="sub">All geological structures within <b>3 m of the face</b> must be recorded and all
+    joints noted. These are entered into the stope status book at the end of the shift.
+    <span class="clause">STD-201 §9.3, §9.6.3</span></p>
+
+  <div class="card">
+    <h3 class="sec">Type</h3>
+    <div class="chips" id="stype">${STRUCTURES.map(s=>
+      `<button class="chip" data-v="${esc(s.t)}" title="${esc(s.n)}">${esc(s.t)}</button>`).join('')}</div>
+    <div id="stypeNote" class="note info" style="display:none;margin-top:16px"><span class="mk">i</span><div id="stn"></div></div>
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Measurement</h3>
+    <div class="grid g4">
+      <div><label class="f" for="sStr">Strike (°)</label><input type="number" id="sStr" class="num"></div>
+      <div><label class="f" for="sDip">Dip (°)</label><input type="number" id="sDip" class="num"></div>
+      <div><label class="f" for="sDD">Dip direction</label>
+        <select id="sDD"><option value="">—</option>${['N','NE','E','SE','S','SW','W','NW'].map(d=>`<option>${d}</option>`).join('')}</select></div>
+      <div><label class="f" for="sW">Width (m)</label><input type="number" step="0.01" id="sW" class="num"></div>
+    </div>
+    <div class="grid g3">
+      <div><label class="f" for="sDist">Distance from face (m) <span class="clause">≤3 m</span></label>
+        <input type="number" step="0.1" id="sDist" class="num"></div>
+      <div><label class="f" for="sDisp">Displacement of BMSZ (m)</label>
+        <input type="number" step="0.01" id="sDisp" class="num" placeholder="Geological, not blast"></div>
+      <div><label class="f" for="sConf">Confidence</label>
+        <select id="sConf"><option>High</option><option>Medium</option><option>Low</option></select></div>
+    </div>
+    <label class="f" for="sNote">Description</label>
+    <textarea id="sNote" placeholder="Infill, alteration halo, relationship to BMSZ, dilution contribution"></textarea>
+    <button class="btn" id="sSave">Record structure</button>
+  </div>
+
+  <hr class="div">
+  <h3 class="sec">This shift — ${mine.length}</h3>
+  ${mine.length?mine.map(e=>`<div class="item">
+    <div class="ih"><span class="it">${esc(e.type)}</span><span class="ts">${fmtTS(e.ts)}</span></div>
+    <div class="ib">Strike/dip <b>${e.strike??'—'}° / ${e.dip??'—'}°</b> ${esc(e.dipDir)||''} ·
+      width <b>${e.width??'—'} m</b> · <b>${e.distFromFace??'—'} m</b> from face<br>
+      ${e.displacement!=null?'BMSZ displacement <b>'+e.displacement+' m</b> · ':''}confidence <b>${esc(e.confidence)}</b>
+      ${e.note?'<br>'+esc(e.note):''}</div>
+  </div>`).join(''):'<div class="empty">No structures recorded this shift</div>'}`;
+
+  let type='';
+  main.querySelectorAll('#stype .chip').forEach(b=>b.onclick=()=>{
+    main.querySelectorAll('#stype .chip').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); type=b.dataset.v;
+    const s=STRUCTURES.find(x=>x.t===type);
+    main.querySelector('#stypeNote').style.display='flex';
+    main.querySelector('#stn').textContent=s?s.n:'';
+  });
+  main.querySelector('#sSave').onclick=async()=>{
+    if(!type){ flash('Select a structure type',true); return; }
+    const v=id=>main.querySelector('#'+id).value;
+    await saveEntry('structure',{type, strike:num(v('sStr')), dip:num(v('sDip')), dipDir:v('sDD'),
+      width:num(v('sW')), distFromFace:num(v('sDist')), displacement:num(v('sDisp')),
+      confidence:v('sConf'), note:v('sNote')});
+    render();
+  };
+}
+/* ═══ 16 · HAZARD — SOS ═══════════════════════════════════════════════
+   Floating, always reachable, on every screen including locked ones.
+   This app does NOT replace the mine's formal hazard reporting system —
+   it records the observation and prompts the technician to report it
+   through the existing channel. */
+
+function renderSOS(){
+  const old=document.getElementById('scrim'); if(old) old.remove();
+  if(!sosOpen) return;
+  const d=document.createElement('div');
+  d.className='scrim'; d.id='scrim';
+  d.innerHTML=`<div class="sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <h2 class="title" style="color:var(--rust)">Hazard</h2>
+      <button class="btn ghost sm" id="hzClose">Close</button>
+    </div>
+    <p class="sub" style="margin-bottom:18px">Record it here, then report it through the mine's
+      formal hazard channel. This app does not replace that system.</p>
+
+    <div class="note stop"><span class="mk">!</span><div>
+      If there is immediate danger, <b>leave the workplace and alert the miner in charge first</b>.
+      Record it afterwards.</div></div>
+
+    <label class="f">Hazard type</label>
+    <div class="chips" id="hzT">${HAZ_TYPES.map(h=>
+      `<button class="chip" data-v="${esc(h)}" style="height:auto;padding:12px 15px;font-size:14.5px">${esc(h)}</button>`).join('')}</div>
+
+    <label class="f" style="margin-top:18px">Severity</label>
+    <div class="chips" id="hzS">
+      <button class="chip" data-v="High">High — stop work</button>
+      <button class="chip" data-v="Medium">Medium</button>
+      <button class="chip" data-v="Low">Low</button>
+    </div>
+
+    <label class="f" style="margin-top:18px" for="hzD">What did you see?</label>
+    <textarea id="hzD" placeholder="Location in the end, extent, what changed"></textarea>
+
+    <label class="f" for="hzA">Immediate action taken</label>
+    <input type="text" id="hzA" placeholder="Barricaded, withdrew, made safe, none">
+
+    <label class="f" for="hzN">Person or team notified</label>
+    <input type="text" id="hzN" value="${esc(shift&&shift.accessBy||'')}" placeholder="Miner / Shift Boss name">
+
+    <button class="btn danger" id="hzSave">Record hazard</button>
+  </div>`;
+  document.body.appendChild(d);
+
+  let t='',s='';
+  d.querySelectorAll('#hzT .chip').forEach(b=>b.onclick=()=>{
+    d.querySelectorAll('#hzT .chip').forEach(x=>x.classList.remove('sel'));
+    b.classList.add('sel'); t=b.dataset.v; });
+  d.querySelectorAll('#hzS .chip').forEach(b=>b.onclick=()=>{
+    d.querySelectorAll('#hzS .chip').forEach(x=>{x.classList.remove('sel');x.classList.remove('rust');});
+    b.classList.add('sel'); if(b.dataset.v==='High') b.classList.add('rust'); s=b.dataset.v; });
+  d.querySelector('#hzClose').onclick=()=>{ sosOpen=false; renderSOS(); };
+  d.onclick=e=>{ if(e.target===d){ sosOpen=false; renderSOS(); } };
+  d.querySelector('#hzSave').onclick=async()=>{
+    if(!t||!s){ flash('Type and severity required',true); return; }
+    await saveEntry('hazard',{hazardType:t, severity:s,
+      description:d.querySelector('#hzD').value, action:d.querySelector('#hzA').value,
+      notified:d.querySelector('#hzN').value, status:'Open'});
+    sosOpen=false; renderSOS(); render();
+    flash('Hazard recorded — now report it through the mine channel');
+  };
+}
+
+function renderHazardList(main){
+  const all=cache.hazard;
+  main.innerHTML=`
+  <h2 class="title">Hazards</h2>
+  <p class="sub">Recorded observations. The formal report still goes through the mine's own
+    hazard reporting system. <span class="clause">Brief §17, §50</span></p>
+  <button class="btn danger" id="newHaz">Record a hazard</button>
+  <hr class="div">
+  ${all.length?all.map(e=>`<div class="item ${e.severity==='High'?'hot':''}">
+    <div class="ih"><span class="it" style="color:${e.severity==='High'?'var(--rust)':'var(--paint)'}">${esc(e.hazardType)}</span>
+      <span class="ts">${fmtTS(e.ts)}</span></div>
+    <div class="ib"><b>${esc(e.severity)}</b> severity · status <b>${esc(e.status)}</b><br>
+      ${esc(e.description)||''}${e.action?'<br>Action: <b>'+esc(e.action)+'</b>':''}
+      ${e.notified?'<br>Notified: <b>'+esc(e.notified)+'</b>':''}<br>
+      <span style="color:var(--faint)">${esc(e.place?e.place.bord:'—')} · ${esc(e.by)}</span></div>
+    <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
+  </div>`).join(''):'<div class="empty">No hazards recorded</div>'}`;
+  main.querySelector('#newHaz').onclick=()=>{ sosOpen=true; renderSOS(); };
+}
+
+/* ═══ 17 · NOTES ══════════════════════════════════════════════════════ */
+
+function renderNote(main){
+  const all=cache.note;
+  main.innerHTML=`
+  <h2 class="title">Notes and log book</h2>
+  <p class="sub">Free entries against this workplace. Stopped-end entries are written here
+    automatically. <span class="clause">§9.7</span></p>
+  <div class="card">
+    <label class="f" for="nC">Category</label>
+    <select id="nC">${['General','Stope status book','Stopped End Log','Deviation request',
+      'Handover','Equipment','Second opinion'].map(x=>`<option>${x}</option>`).join('')}</select>
+    <label class="f" style="margin-top:14px" for="nT">Note</label>
+    <textarea id="nT" style="min-height:130px"></textarea>
+    <button class="btn" id="nS">Save note</button>
+  </div>
+  ${all.length?all.map(e=>`<div class="item">
+    <div class="ih"><span class="it">${esc(e.category)}</span><span class="ts">${fmtTS(e.ts)}</span></div>
+    <div class="ib">${esc(e.text)}<br><span style="color:var(--faint)">${esc(e.by)}</span></div>
+  </div>`).join(''):'<div class="empty">No notes</div>'}`;
+  main.querySelector('#nS').onclick=async()=>{
+    const t=main.querySelector('#nT').value.trim();
+    if(!t){ flash('Nothing to save',true); return; }
+    await saveEntry('note',{category:main.querySelector('#nC').value, text:t}); render();
+  };
+}
+
+/* ═══ 18 · REPORTS ════════════════════════════════════════════════════ */
+
+function renderReports(main){
+  const g=gates();
+  const os=cache.offsetSet.filter(e=>e.shiftId===shift.id);
+  main.innerHTML=`
+  <h2 class="title">Shift report</h2>
+  <p class="sub">Daily BMSZ Marking Summary and Stope Sheet, assembled from what you captured.
+    <span class="clause">STD-201 §9.7</span></p>
+
+  <div class="stats">
+    <div class="stat"><div class="num">${g.counts.logs}</div><div class="lbl">Face logs</div></div>
+    <div class="stat"><div class="num">${g.counts.marks}</div><div class="lbl">BMSZ markings</div></div>
+    <div class="stat"><div class="num">${g.counts.offs}</div><div class="lbl">Offset records</div></div>
+    <div class="stat ${cache.hazard.length?'hot':''}"><div class="num">${cache.hazard.length}</div><div class="lbl">Hazards</div></div>
+    <div class="stat"><div class="num">${cache.structure.filter(e=>e.shiftId===shift.id).length}</div><div class="lbl">Structures</div></div>
+    <div class="stat ${pending()?'hot':''}"><div class="num">${pending()}</div><div class="lbl">Awaiting sync</div></div>
+  </div>
+
+  ${os.map(e=>`<h3 class="sec">Blast ${esc(e.blastNumber)} · ${esc(e.headingType)} · design cut ${e.stats.planned.toFixed(2)} m</h3>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Dist m</th><th>H/W</th><th>F/W</th><th>Stope width</th><th>Vs design</th><th>Status</th><th>Cause</th></tr></thead>
+      <tbody>${e.stations.map(s=>{
+        const hb=s.hw!=null&&s.hw>e.hwLimit, fb=s.fw!=null&&s.fw<e.fwLimit;
+        const d=s.width!=null?s.width-e.stats.planned:null;
+        return `<tr class="${hb||fb?'breach':''}">
+          <td class="n">${s.dist}</td><td class="n" style="color:${hb?'var(--rust)':'inherit'}">${s.hw??'—'}</td>
+          <td class="n" style="color:${fb?'var(--rust)':'inherit'}">${s.fw??'—'}</td>
+          <td class="n">${s.width??'—'}</td>
+          <td class="n" style="color:${d>0.01?'var(--rust)':'var(--grow)'}">${d!=null?(d>=0?'+':'')+d.toFixed(2):'—'}</td>
+          <td style="color:${hb||fb?'var(--rust)':'var(--grow)'};font-family:var(--mono);font-size:13px">
+            ${hb||fb?'OVER-BREAK':'WITHIN CUT'}</td>
+          <td style="font-size:14px">${esc(s.cause)||''}</td></tr>`;}).join('')}</tbody>
+    </table></div>
+    <p class="hint" style="margin-bottom:22px">Mean stope width <b>${e.stats.meanW!=null?e.stats.meanW.toFixed(2):'—'} m</b>
+      against design <b>${e.stats.planned.toFixed(2)} m</b>
+      ${e.stats.dilution!=null?' — <b style="color:var(--rust)">'+e.stats.dilution.toFixed(0)+'% over cut</b>':''}.
+      Estimated waste ${e.stats.wasteT!=null?e.stats.wasteT.toFixed(0)+' t':'—'}.</p>`).join('')
+    || '<div class="empty">No offset records this shift</div>'}
+
+  <button class="btn teal" id="sync">Sync to MRM system now</button>
+  <p class="hint">All measurements are entered into stope width control in the MRM system.
+    <span class="clause">§9.8.vii</span></p>`;
+  main.querySelector('#sync').onclick=syncNow;
+}
+
+/* ═══ 19 · SIGN OUT ═══════════════════════════════════════════════════ */
+
+const SIGNOUT = [
+  ['Return time entered in Geology Personnel Underground Log Book','§9.6.2'],
+  ['XRF analyser returned and usage log closed',                   '§9.6.2 · Radiation Protection Programme'],
+  ['All XRF readings downloaded and saved on the server',          '§9.7'],
+  ['Structures and joints entered into the stope status book',     '§9.6.3'],
+  ['Daily BMSZ Marking Summary Sheet updated',                     '§9.7'],
+  ['Stope Sheet updated',                                          '§9.7'],
+  ['Stope Marking Tally, Form STD2.1A, updated',                   '§9.2'],
+  ['Empty spray cans returned to stores and exchanged',            '§8.3.3'],
+  ['Equipment returned and damages reported',                      '§8.2.2'],
+];
+
+function renderSignout(main){
+  const s=shift, g=gates();
+  const done=SIGNOUT.filter(x=>s.signout[x[0]]===true).length;
+  main.innerHTML=`
+  <div class="eyebrow">Stage 6 · surface</div>
+  <h2 class="title">Sign out</h2>
+  <p class="sub">Close the shift. The record cannot be closed until the statutory books are
+    updated. <span class="clause">STD-201 §8.2.2, §8.3.3, §9.2, §9.6.2, §9.6.3, §9.7</span></p>
+
+  <div class="gates">
+    <div class="gate done"><div class="gn">Face logs</div><div class="gs">${g.counts.logs}</div></div>
+    <div class="gate done"><div class="gn">Markings</div><div class="gs">${g.counts.marks}</div></div>
+    <div class="gate done"><div class="gn">Offset records</div><div class="gs">${g.counts.offs}</div></div>
+    <div class="gate ${pending()?'open':'done'}"><div class="gn">Awaiting sync</div><div class="gs">${pending()}</div></div>
+  </div>
+
+  <div class="card ${done===SIGNOUT.length?'ok':''}">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:12px">
+      <h3 class="sec" style="margin-bottom:14px">Close-out checklist</h3>
+      <span class="clause">${done} / ${SIGNOUT.length}</span>
+    </div>
+    ${SIGNOUT.map(x=>`<div class="check ${s.signout[x[0]]===true?'on':''}" data-so="${esc(x[0])}">
+      <div class="box">✓</div><div class="txt">${esc(x[0])}<small>${esc(x[1])}</small></div></div>`).join('')}
+    <button class="btn ghost sm" style="width:100%;margin-top:10px" id="soAll">Confirm all</button>
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Deviations from the standard <span class="clause">§7.3</span></h3>
+    <textarea id="dev" placeholder="Any deviation requires authorisation from the Chief Geologist's office or an individual appointed by the Chief Geologist. Record it here.">${esc(s.deviation||'')}</textarea>
+    <p class="hint">Breach of this standard by any employee may result in disciplinary action.
+      <span class="clause">§7.1</span></p>
+  </div>
+
+  <div class="card pri">
+    <h3 class="sec">Declaration</h3>
+    <div class="check" id="decl"><div class="box">✓</div><div class="txt">
+      I confirm the information recorded during this shift is my own observation and measurement,
+      taken in accordance with UNKI-MIN-MRM-STD-201.
+      <small>The Geological Technician is accountable for all reef marking in his or her sections · §9.1, §7.3</small>
+    </div></div>
+    <div class="grid g2" style="margin-top:14px">
+      <div><label class="f">Geological Technician</label>
+        <input type="text" class="num" value="${esc(session.name)} · ${esc(session.employeeNo)}" disabled></div>
+      <div><label class="f">Time out</label>
+        <input type="text" class="num" value="${new Date().toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}" disabled></div>
+    </div>
+  </div>
+
+  <button class="btn teal" id="syncOut">Sync ${pending()} record(s)</button>
+  <button class="btn" id="endShift" disabled>Close shift and sign out</button>`;
+
+  main.querySelectorAll('[data-so]').forEach(el=>el.onclick=()=>{
+    const k=el.dataset.so; s.signout[k]=s.signout[k]===true?undefined:true;
+    put('shift:current',s); render(); });
+  main.querySelector('#soAll').onclick=()=>{ SIGNOUT.forEach(x=>s.signout[x[0]]=true);
+    put('shift:current',s); render(); };
+  main.querySelector('#dev').oninput=e=>{ s.deviation=e.target.value; put('shift:current',s); };
+  main.querySelector('#syncOut').onclick=syncNow;
+
+  let declared=false;
+  const decl=main.querySelector('#decl');
+  const btn=main.querySelector('#endShift');
+  const refresh=()=>{ btn.disabled = !(declared && done===SIGNOUT.length); };
+  decl.onclick=()=>{ declared=!declared; decl.classList.toggle('on',declared); refresh(); };
+  refresh();
+
+  btn.onclick=async()=>{
+    s.endedAt=nowTS();
+    await saveEntry('shift',{summary:{logs:g.counts.logs,marks:g.counts.marks,offsets:g.counts.offs,
+      hazards:cache.hazard.length}, signout:s.signout, deviation:s.deviation,
+      team:s.team, startedAt:s.startedAt, endedAt:s.endedAt, shiftName:s.shiftName});
+    await put('shift:current',null); await put('place',null);
+    shift=null; place=null; OS=null; stage='login'; session=null; await put('session',null);
+    renderShell(); flash('Shift closed and signed out');
+  };
+}
+
+/* ═══ 20 · DASHBOARD ══════════════════════════════════════════════════ */
+
+function renderDash(main){
+  const g=gates();
+  const mods=[
+    ['preshift','Pre-shift','SHE · tools · register',true, g.pre==='done'?'✓':'open'],
+    ['team','Team engagement','Workmates · PPE',true, shift.team.length||'—'],
+    ['access','Workplace access','Permission · certification',unlocked('access'), g.access==='done'?'✓':'open'],
+    ['facelog','Face log','Peg · advance · dimensions',unlocked('facelog'), g.counts.logs],
+    ['bmsz','BMSZ marking','Visual · XRF · line',unlocked('bmsz'), g.counts.marks],
+    ['offsets','Blast offsets','Over-break vs design cut',unlocked('offsets'), g.counts.offs],
+    ['structure','Structures','Within 3 m of face',unlocked('structure'), cache.structure.filter(e=>e.shiftId===shift.id).length],
+    ['hazard','Hazards','Observations',true, cache.hazard.length],
+    ['reports','Shift report','Summary · sync',true, pending()],
+    ['signout','Sign out','Close the shift',unlocked('signout'), g.out==='open'?'ready':'locked'],
+  ];
+  main.innerHTML=`
+  <div class="eyebrow">${esc(session.role)} · ${esc(shift.shiftName)} shift</div>
+  <h2 class="title">${esc(session.name.split('.').pop().trim())}</h2>
+  <p class="sub">${place?`Working <b>${esc(place.bord)}</b>, ${esc(place.level)}, blast
+    <b>${esc(place.blastNumber)}</b>. Cleared for re-entry by ${esc(place.clearedBy)}.`
+    :'No workplace selected.'}</p>
+
+  <div class="gates">
+    <div class="gate ${g.pre}"><div class="gn">1 · Pre-shift</div>
+      <div class="gs">${g.pre==='done'?'Complete':'Outstanding'}</div></div>
+    <div class="gate ${g.access}"><div class="gn">2 · Access</div>
+      <div class="gs">${g.access==='done'?'Certified':g.access==='open'?'Outstanding':'Locked'}</div></div>
+    <div class="gate ${g.capture}"><div class="gn">3 · Capture</div>
+      <div class="gs">${g.capture==='shut'?'Locked':g.capture==='done'?'Complete':'In progress'}</div></div>
+    <div class="gate ${g.out==='open'?'open':'shut'}"><div class="gn">4 · Sign out</div>
+      <div class="gs">${g.out==='open'?'Ready':'Locked'}</div></div>
+  </div>
+
+  ${g.pre!=='done'?`<div class="note warn"><span class="mk">◆</span><div>
+    Pre-shift preparation is not complete. Face log, marking and offsets stay locked until the
+    SHE record, tools inspection and underground register are done.</div></div>`:''}
+  ${g.access!=='done'&&g.pre==='done'?`<div class="note warn"><span class="mk">◆</span><div>
+    Workplace access has not been certified. Complete the access record at the end before
+    logging anything.</div></div>`:''}
+
+  <div class="mods">${mods.map(([v,n,d,ok,c])=>`
+    <button class="mod ${ok?'':'locked'}" data-go="${v}">
+      <div class="mi">${esc(d)}</div><div class="mn">${esc(n)}</div>
+      <div class="mc">${ok?esc(String(c)):'🔒 locked'}</div></button>`).join('')}</div>`;
+
+  main.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{
+    const v=b.dataset.go;
+    if(!unlocked(v)){ flash('Complete the previous stage first',true); return; }
+    setView(v);
+  });
+}
+
+/* ═══ 21 · SHELL ══════════════════════════════════════════════════════ */
+
+const NAV = [
+  ['dash','Home'],['preshift','Pre-shift'],['team','Team'],['access','Access'],
+  ['facelog','Face log'],['bmsz','BMSZ'],['offsets','Offsets'],['structure','Structures'],
+  ['hazard','Hazards'],['note','Notes'],['reports','Report'],['signout','Sign out'],
+];
+
+function renderAppShell(app){
+  const g=gates();
+  app.innerHTML=`
+  <div class="shell">
+    <aside class="rail">
+      <div class="railhead">
+        <div class="mark">Unki <em>GeoTech</em></div>
+        <div class="clause" style="margin-top:8px">${esc(session.name)}<br>${esc(session.role)}</div>
+      </div>
+      <div class="railnav">
+        <div class="grp">Procedure</div>
+        ${NAV.slice(0,8).map(([v,l])=>navBtn(v,l)).join('')}
+        <div class="grp">Anytime</div>
+        ${NAV.slice(8).map(([v,l])=>navBtn(v,l)).join('')}
+      </div>
+    </aside>
+    <div class="body">
+      <header class="top">
+        <div class="toprow">
+          <div class="mark" style="display:none" id="mMark">Unki <em>GeoTech</em></div>
+          <div class="topmeta">
+            <span class="netpill"><span class="netdot ${online()?'':'off'}"></span>
+              ${online()?'Online':'Offline'} · ${pending()} held</span>
+            <span id="clk"></span>
+            <button class="btn ghost sm" id="chg">Change place</button>
+          </div>
+        </div>
+        ${place?`<div class="wpbar">
+          <span class="wpname">${esc(place.bord)}</span>
+          <span class="wpsub">${esc(place.level)} · ${esc(place.section)} · blast ${esc(place.blastNumber)} ·
+            ${esc(LIMITS[place.headingType].label)}</span>
+          <span class="spacer"></span>
+          <span class="wpsub">Face ${place.faceLength} × ${place.faceWidth} × ${place.faceHeight} m ·
+            advance ${place.advance} m</span>
+        </div>`:''}
+      </header>
+      <nav class="tabs">${NAV.map(([v,l])=>navBtn(v,l,true)).join('')}</nav>
+      <main id="main"></main>
+    </div>
+  </div>
+  <button class="sos" id="sos" aria-label="Record a hazard">
+    <span class="g">⚠</span><span>SOS</span></button>`;
+
+  app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{
+    const v=b.dataset.nav;
+    if(!unlocked(v)){ flash('Locked — complete the previous stage',true); return; }
+    setView(v);
+  });
+  document.getElementById('sos').onclick=()=>{ sosOpen=true; renderSOS(); };
+  document.getElementById('chg').onclick=()=>{ stage='reentry'; renderShell(); };
+  clearInterval(window._clk); window._clk=setInterval(tick,20000); tick();
+  render();
+}
+function navBtn(v,l,tab){
+  const ok=unlocked(v);
+  return `<button data-nav="${v}" class="${VIEW===v?'active':''} ${ok?'':'locked'}">
+    ${ok?'':'<span class="lockglyph">🔒</span>'}${esc(l)}</button>`;
+}
+function tick(){
+  const c=document.getElementById('clk');
+  if(c) c.textContent=new Date().toLocaleString(undefined,
+    {weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+}
+function setView(v){ VIEW=v; renderAppShell(document.getElementById('app')); window.scrollTo(0,0); }
+
+function refreshNav(){
+  document.querySelectorAll('[data-nav]').forEach(b=>{
+    const v=b.dataset.nav, ok=unlocked(v);
+    b.classList.toggle('locked',!ok);
+    b.classList.toggle('active',VIEW===v);
+    const g=b.querySelector('.lockglyph');
+    if(ok&&g) g.remove();
+    if(!ok&&!g) b.insertAdjacentHTML('afterbegin','<span class="lockglyph">\u{1F512}</span>');
+  });
+  const np=document.querySelector('.netpill');
+  if(np) np.innerHTML='<span class="netdot '+(online()?'':'off')+'"></span>'+
+    (online()?'Online':'Offline')+' \u00b7 '+pending()+' held';
+}
+function render(){
+  const main=document.getElementById('main'); if(!main) return;
+  const R={dash:renderDash, preshift:renderPreshift, team:renderTeam, access:renderAccess,
+    facelog:renderFaceLog, bmsz:renderBmsz, offsets:renderOffsets, structure:renderStructure,
+    hazard:renderHazardList, note:renderNote, reports:renderReports, signout:renderSignout};
+  if(!unlocked(VIEW)) VIEW='dash';
+  (R[VIEW]||renderDash)(main);
+  refreshNav();
+}
+function renderShell(){
+  const app=document.getElementById('app');
+  clearInterval(window._clk);
+  if(stage==='login')   return renderLogin(app);
+  if(stage==='reentry') return renderReentry(app);
+  renderAppShell(app);
+}
+
+/* ═══ 22 · BOOT ═══════════════════════════════════════════════════════ */
+
+(async function boot(){
+  window.addEventListener('online', ()=>{ if(stage==='app') renderAppShell(document.getElementById('app')); });
+  window.addEventListener('offline',()=>{ if(stage==='app') renderAppShell(document.getElementById('app')); });
+
+  session = await get('session');
+  shift   = await get('shift:current');
+  place   = await get('place');
+  await loadAll();
+
+  if(session && shift && place) stage='app';
+  else if(session)              stage='reentry';
+  else                          stage='login';
+
+  if(stage==='reentry' && !reentryFeed.length){ /* board fetches on render */ }
+  renderShell();
+})();
+
+</script>
+</body>
+</html>
