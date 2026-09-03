@@ -624,6 +624,17 @@ function fmtT(iso){ if(!iso) return '—'; return new Date(iso)
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ── UI copy switch ───────────────────────────────────────────────────
+   Explanatory / rationale copy is hidden for now. Nothing is deleted —
+   flip SHOW_HELP to true to bring every block back at once.
+   Operational copy is NOT routed through here and always shows:
+   the R4 continuous-marking block, safety stop notes, the marking
+   instruction, the second-opinion accountability note, over-break
+   breach warnings, gate-lock warnings and clause citations on
+   checklist items. */
+const SHOW_HELP = false;
+const help = html => SHOW_HELP ? html : '';
 function flash(msg,bad){ const f=document.getElementById('flash'); if(!f)return;
   f.textContent=msg; f.className='flash show'+(bad?' bad':'');
   clearTimeout(f._t); f._t=setTimeout(()=>f.className='flash'+(bad?' bad':''),1800); }
@@ -739,10 +750,10 @@ function renderLogin(app){
     </div>
     <div class="card">
       <h3 class="sec">Identify yourself</h3>
-      <p class="hint" style="margin:0 0 16px">
+      ${help(`<p class="hint" style="margin:0 0 16px">
         Every record you create is signed with your name and employee number and cannot
         be edited afterwards. <span class="clause">STD-201 §9.1</span>
-      </p>
+      </p>`)}
       <div id="ulist">
         ${USERS.map((u,i)=>`<button class="pick" data-i="${i}">
           <span><b>${esc(u.name)}</b><br><span>${esc(u.role)}</span></span>
@@ -752,8 +763,8 @@ function renderLogin(app){
       <label class="f" for="pin">Cap-lamp / PIN</label>
       <input type="password" id="pin" inputmode="numeric" placeholder="Any 4 digits for this prototype">
       <button class="btn" id="go" disabled>Sign in</button>
-      <p class="hint">Credentials are cached on the device so you can sign in underground
-        with no network. <span class="clause">Brief §5, §31</span></p>
+      ${help(`<p class="hint">Credentials are cached on the device so you can sign in underground
+        with no network. <span class="clause">Brief §5, §31</span></p>`)}
     </div>
   </div></div>`;
 
@@ -786,11 +797,11 @@ function renderReentry(app){
       <div class="b1">Re-entry Board</div>
       <div class="b2">${esc(session.name)} · ${esc(session.section)}</div>
     </div>
-    <div class="note info"><span class="mk">↔</span><div>
+    ${help(`<div class="note info"><span class="mk">↔</span><div>
       Live from the <b>Re-entry App</b>. Workplaces appear here once examination is complete.
       Where the miner has selected <b>face marking</b>, the bord is queued to you automatically
       and its blast number, advance, peg and face dimensions carry across — you do not retype them.
-    </div></div>
+    </div></div>`)}
     <div id="feedbox"><div class="empty">Contacting re-entry system…</div></div>
     <button class="btn ghost" id="refresh">Refresh board</button>
     <button class="btn ghost" id="out" style="margin-top:12px">Sign out</button>
@@ -901,8 +912,8 @@ function renderPreshift(main){
   main.innerHTML = `
   <div class="eyebrow">Stage 1 · surface</div>
   <h2 class="title">Pre-shift preparation</h2>
-  <p class="sub">Complete before proceeding underground. The access gate stays locked until
-    every item here is confirmed. <span class="clause">STD-201 §8.1, §8.2, §9.5, §9.6.1, §9.6.2</span></p>
+  ${help(`<p class="sub">Complete before proceeding underground. The access gate stays locked until
+    every item here is confirmed. <span class="clause">STD-201 §8.1, §8.2, §9.5, §9.6.1, §9.6.2</span></p>`)}
 
   <div class="card pri">
     <h3 class="sec">Shift and planning</h3>
@@ -915,8 +926,8 @@ function renderPreshift(main){
       <div><label class="f">Started</label>
         <input type="text" class="num" value="${fmtTS(s.startedAt)}" disabled></div>
     </div>
-    <p class="hint">The tick sheet signed off at the planning meeting is the planning basis for
-      the month's ends and feeds the Stope Marking Tally, Form STD2.1A. <span class="clause">§9.2, §9.6.1</span></p>
+    ${help(`<p class="hint">The tick sheet signed off at the planning meeting is the planning basis for
+      the month's ends and feeds the Stope Marking Tally, Form STD2.1A. <span class="clause">§9.2, §9.6.1</span></p>`)}
   </div>
 
   ${checkGroup('Underground register','register',REGISTER,s.register,false)}
@@ -989,8 +1000,8 @@ function renderTeam(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 1b · surface</div>
   <h2 class="title">Team and workmate engagement</h2>
-  <p class="sub">The Geo-Tech gives task instructions to the team and inspects their PPE.
-    Each person is recorded by name. <span class="clause">STD-201 §8.1</span></p>
+  ${help(`<p class="sub">The Geo-Tech gives task instructions to the team and inspects their PPE.
+    Each person is recorded by name. <span class="clause">STD-201 §8.1</span></p>`)}
 
   <div class="card">
     <h3 class="sec">Add team member</h3>
@@ -1021,8 +1032,8 @@ function renderTeam(main){
       <div class="txt">Task instructions given to the whole team and PPE inspected
         <small>Geo-Tech declaration · §8.1</small></div>
     </div>
-    <p class="hint">Working alone is permitted by the standard, but the declaration is still
-      required so the record shows who was present.</p>
+    ${help(`<p class="hint">Working alone is permitted by the standard, but the declaration is still
+      required so the record shows who was present.</p>`)}
   </div>
 
   <div class="btnrow">
@@ -1060,8 +1071,8 @@ function renderAccess(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 2 · at the end</div>
   <h2 class="title">Workplace access</h2>
-  <p class="sub">Nothing can be logged, marked or measured until this record is complete.
-    <span class="clause">STD-201 §8.3, §9.2, §9.5.ii, §9.5.v</span></p>
+  ${help(`<p class="sub">Nothing can be logged, marked or measured until this record is complete.
+    <span class="clause">STD-201 §8.3, §9.2, §9.5.ii, §9.5.v</span></p>`)}
 
   <div class="note go"><span class="mk">✓</span><div>
     <b>${esc(place.bord)}</b> was cleared for re-entry by <b>${esc(place.clearedBy)}</b>
@@ -1087,8 +1098,8 @@ function renderAccess(main){
       <div><label class="f">Recorded at</label>
         <input type="text" class="num" value="${s.accessAt?fmtTS(s.accessAt):'not yet certified'}" disabled></div>
     </div>
-    <p class="hint">The miner signs the Geo-Tech's field book as acknowledgement, and both sign the
-      daily marking sheet. <span class="clause">§8.3, §9.6.2</span></p>
+    ${help(`<p class="hint">The miner signs the Geo-Tech's field book as acknowledgement, and both sign the
+      daily marking sheet. <span class="clause">§8.3, §9.6.2</span></p>`)}
   </div>
 
   <button class="btn danger" id="abort">Abandon — conditions unsafe</button>
@@ -1119,9 +1130,9 @@ function renderFaceLog(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 3 · at the face</div>
   <h2 class="title">Face log</h2>
-  <p class="sub">Peg reference, advance and face dimensions. Values carried from the re-entry
+  ${help(`<p class="sub">Peg reference, advance and face dimensions. Values carried from the re-entry
     record are shown pre-filled — correct them if the face differs.
-    <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>
+    <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>`)}
 
   <div class="card pri">
     <h3 class="sec">Carried from re-entry — check and confirm</h3>
@@ -1209,14 +1220,14 @@ function renderBmsz(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 4 · at the face</div>
   <h2 class="title">BMSZ identification and marking</h2>
-  <p class="sub">Visual identification first, then confirmation. Marking type is decided by the
+  ${help(`<p class="sub">Visual identification first, then confirmation. Marking type is decided by the
     system from what you record — it is not a free choice.
-    <span class="clause">STD-201 §9.6.3, §9.7 · procedure UNKI-MIN-MRM-PRO-200</span></p>
+    <span class="clause">STD-201 §9.6.3, §9.7 · procedure UNKI-MIN-MRM-PRO-200</span></p>`)}
 
   <div class="note ${due?'warn':'info'}"><span class="mk">${due?'◆':'i'}</span><div>
     Blast number <b>${esc(place.blastNumber)}</b> — this end is due for
     <b>${due?'channel sampling':'XRF confirmation'}</b> this round.
-    All ends are sampled every second blast and every other blast is confirmed by XRF.
+    ${help(`All ends are sampled every second blast and every other blast is confirmed by XRF.`)}
     <span class="clause">§9.6.3</span>
   </div></div>
 
@@ -1235,8 +1246,8 @@ function renderBmsz(main){
   <div class="card">
     <h3 class="sec">Step 2 · XRF confirmation</h3>
     <p class="hint" style="margin:0 0 14px">Enter your name and the sample id / end into the
-      instrument so the readings can be matched on download. The Great Dyke has a peculiar Cu and
-      tNi profile — the sharp drop corresponds to the Peak Platinum Value.
+      instrument so the readings can be matched on download.${help(` The Great Dyke has a peculiar Cu and
+      tNi profile — the sharp drop corresponds to the Peak Platinum Value.`)}
       <span class="clause">§9.6.3, §9.7</span></p>
     <div class="grid g3">
       <div><label class="f" for="xId">End ID entered on instrument</label>
@@ -1477,9 +1488,9 @@ function renderOffsets(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 5 · at the face — core record</div>
   <h2 class="title">Blast offset record</h2>
-  <p class="sub">Deviation of the blasted profile from the design cut. Over-break and under-break
+  ${help(`<p class="sub">Deviation of the blasted profile from the design cut. Over-break and under-break
     caused by the blast — geological displacement is recorded under Structures.
-    <span class="clause">STD-201 §9.8</span></p>
+    <span class="clause">STD-201 §9.8</span></p>`)}
 
   <div class="card">
     <h3 class="sec">Tape set-up <span class="clause">§9.8.ii–v</span></h3>
@@ -1539,8 +1550,8 @@ function renderOffsets(main){
             ${((hw-fw)-S.planned>=0?'+':'')+((hw-fw)-S.planned).toFixed(2)} m</div></div>
       </div>`:''}
       ${bad?`<div class="note stop" style="margin:14px 0 0"><span class="mk">!</span><div>
-        <b>Cut exceeded at this station.</b> Record what caused it — this is the record that
-        drives blast practice back at the planning meeting.</div></div>
+        <b>Cut exceeded at this station.</b> Record what caused it.${help(` This is the record that
+        drives blast practice back at the planning meeting.`)}</div></div>
         <label class="f" style="margin-top:14px">Cause of over-break</label>
         <div class="chips" id="cause">${BLAST_CAUSES.map(c=>
           `<button class="chip ${cur.cause===c?'sel rust':''}" data-c="${esc(c)}"
@@ -1569,9 +1580,9 @@ function renderOffsets(main){
     <div class="stat ${S.dilution>5?'hot':''}"><div class="num">${S.dilution!=null?S.dilution.toFixed(0)+'%':'—'}</div><div class="lbl">Over design cut</div></div>
     <div class="stat ${S.wasteT>0?'hot':''}"><div class="num">${S.wasteT!=null?S.wasteT.toFixed(0):'—'}</div><div class="lbl">Waste tonnes est.</div></div>
   </div>
-  <p class="hint" style="margin-top:-8px;margin-bottom:20px">
+  ${help(`<p class="hint" style="margin-top:-8px;margin-bottom:20px">
     Waste estimate = mean excess width × face length ${OS.faceLength} m × advance ${OS.advance} m
-    × SG ${SG}. Indicative only — reconciliation is done by MRM.</p>
+    × SG ${SG}. Indicative only — reconciliation is done by MRM.</p>`)}
 
   <button class="btn" id="saveOS" ${S.done===S.total?'':'disabled'}>
     ${S.done===S.total?'Save blast offset record':`${S.total-S.done} station(s) still to measure`}</button>
@@ -1645,9 +1656,9 @@ function renderStructure(main){
   main.innerHTML=`
   <div class="eyebrow">At the face</div>
   <h2 class="title">Structures and joints</h2>
-  <p class="sub">All geological structures within <b>3 m of the face</b> must be recorded and all
+  ${help(`<p class="sub">All geological structures within <b>3 m of the face</b> must be recorded and all
     joints noted. These are entered into the stope status book at the end of the shift.
-    <span class="clause">STD-201 §9.3, §9.6.3</span></p>
+    <span class="clause">STD-201 §9.3, §9.6.3</span></p>`)}
 
   <div class="card">
     <h3 class="sec">Type</h3>
@@ -1797,8 +1808,8 @@ function renderNote(main){
   const all=cache.note;
   main.innerHTML=`
   <h2 class="title">Notes and log book</h2>
-  <p class="sub">Free entries against this workplace. Stopped-end entries are written here
-    automatically. <span class="clause">§9.7</span></p>
+  ${help(`<p class="sub">Free entries against this workplace. Stopped-end entries are written here
+    automatically. <span class="clause">§9.7</span></p>`)}
   <div class="card">
     <label class="f" for="nC">Category</label>
     <select id="nC">${['General','Stope status book','Stopped End Log','Deviation request',
@@ -1825,8 +1836,8 @@ function renderReports(main){
   const os=cache.offsetSet.filter(e=>e.shiftId===shift.id);
   main.innerHTML=`
   <h2 class="title">Shift report</h2>
-  <p class="sub">Daily BMSZ Marking Summary and Stope Sheet, assembled from what you captured.
-    <span class="clause">STD-201 §9.7</span></p>
+  ${help(`<p class="sub">Daily BMSZ Marking Summary and Stope Sheet, assembled from what you captured.
+    <span class="clause">STD-201 §9.7</span></p>`)}
 
   <div class="stats">
     <div class="stat"><div class="num">${g.counts.logs}</div><div class="lbl">Face logs</div></div>
@@ -1859,8 +1870,8 @@ function renderReports(main){
     || '<div class="empty">No offset records this shift</div>'}
 
   <button class="btn teal" id="sync">Sync to MRM system now</button>
-  <p class="hint">All measurements are entered into stope width control in the MRM system.
-    <span class="clause">§9.8.vii</span></p>`;
+  ${help(`<p class="hint">All measurements are entered into stope width control in the MRM system.
+    <span class="clause">§9.8.vii</span></p>`)}`;
   main.querySelector('#sync').onclick=syncNow;
 }
 
@@ -1884,8 +1895,8 @@ function renderSignout(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 6 · surface</div>
   <h2 class="title">Sign out</h2>
-  <p class="sub">Close the shift. The record cannot be closed until the statutory books are
-    updated. <span class="clause">STD-201 §8.2.2, §8.3.3, §9.2, §9.6.2, §9.6.3, §9.7</span></p>
+  ${help(`<p class="sub">Close the shift. The record cannot be closed until the statutory books are
+    updated. <span class="clause">STD-201 §8.2.2, §8.3.3, §9.2, §9.6.2, §9.6.3, §9.7</span></p>`)}
 
   <div class="gates">
     <div class="gate done"><div class="gn">Face logs</div><div class="gs">${g.counts.logs}</div></div>
@@ -1907,8 +1918,8 @@ function renderSignout(main){
   <div class="card">
     <h3 class="sec">Deviations from the standard <span class="clause">§7.3</span></h3>
     <textarea id="dev" placeholder="Any deviation requires authorisation from the Chief Geologist's office or an individual appointed by the Chief Geologist. Record it here.">${esc(s.deviation||'')}</textarea>
-    <p class="hint">Breach of this standard by any employee may result in disciplinary action.
-      <span class="clause">§7.1</span></p>
+    ${help(`<p class="hint">Breach of this standard by any employee may result in disciplinary action.
+      <span class="clause">§7.1</span></p>`)}
   </div>
 
   <div class="card pri">
