@@ -626,13 +626,17 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,c=>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 /* ── UI copy switch ───────────────────────────────────────────────────
-   Explanatory / rationale copy is hidden for now. Nothing is deleted —
-   flip SHOW_HELP to true to bring every block back at once.
-   Operational copy is NOT routed through here and always shows:
-   the R4 continuous-marking block, safety stop notes, the marking
-   instruction, the second-opinion accountability note, over-break
-   breach warnings, gate-lock warnings and clause citations on
-   checklist items. */
+   Background copy — why the app or the standard works a certain way —
+   is hidden for now. Nothing is deleted: flip SHOW_HELP to true to
+   bring every block back at once.
+
+   Only background copy goes through help(). Anything that tells the
+   technician what to DO, or states a requirement, is NEVER wrapped and
+   always shows: the R4 continuous-marking block and the marking
+   instruction (§9.6.3, §9.7), safety stop notes (§9.5), the
+   second-opinion accountability note (§9.1), the 3 m structures
+   requirement (§9.3), over-break breach warnings, gate-lock warnings,
+   keypad instructions and clause citations on checklist items. */
 const SHOW_HELP = false;
 const help = html => SHOW_HELP ? html : '';
 function flash(msg,bad){ const f=document.getElementById('flash'); if(!f)return;
@@ -912,8 +916,8 @@ function renderPreshift(main){
   main.innerHTML = `
   <div class="eyebrow">Stage 1 · surface</div>
   <h2 class="title">Pre-shift preparation</h2>
-  ${help(`<p class="sub">Complete before proceeding underground. The access gate stays locked until
-    every item here is confirmed. <span class="clause">STD-201 §8.1, §8.2, §9.5, §9.6.1, §9.6.2</span></p>`)}
+  <p class="sub">Complete before proceeding underground. The access gate stays locked until
+    every item here is confirmed. <span class="clause">STD-201 §8.1, §8.2, §9.5, §9.6.1, §9.6.2</span></p>
 
   <div class="card pri">
     <h3 class="sec">Shift and planning</h3>
@@ -1000,8 +1004,8 @@ function renderTeam(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 1b · surface</div>
   <h2 class="title">Team and workmate engagement</h2>
-  ${help(`<p class="sub">The Geo-Tech gives task instructions to the team and inspects their PPE.
-    Each person is recorded by name. <span class="clause">STD-201 §8.1</span></p>`)}
+  <p class="sub">The Geo-Tech gives task instructions to the team and inspects their PPE.
+    Each person is recorded by name. <span class="clause">STD-201 §8.1</span></p>
 
   <div class="card">
     <h3 class="sec">Add team member</h3>
@@ -1098,8 +1102,8 @@ function renderAccess(main){
       <div><label class="f">Recorded at</label>
         <input type="text" class="num" value="${s.accessAt?fmtTS(s.accessAt):'not yet certified'}" disabled></div>
     </div>
-    ${help(`<p class="hint">The miner signs the Geo-Tech's field book as acknowledgement, and both sign the
-      daily marking sheet. <span class="clause">§8.3, §9.6.2</span></p>`)}
+    <p class="hint">The miner signs the Geo-Tech's field book as acknowledgement, and both sign the
+      daily marking sheet. <span class="clause">§8.3, §9.6.2</span></p>
   </div>
 
   <button class="btn danger" id="abort">Abandon — conditions unsafe</button>
@@ -1130,9 +1134,9 @@ function renderFaceLog(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 3 · at the face</div>
   <h2 class="title">Face log</h2>
-  ${help(`<p class="sub">Peg reference, advance and face dimensions. Values carried from the re-entry
+  <p class="sub">Peg reference, advance and face dimensions. Values carried from the re-entry
     record are shown pre-filled — correct them if the face differs.
-    <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>`)}
+    <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>
 
   <div class="card pri">
     <h3 class="sec">Carried from re-entry — check and confirm</h3>
@@ -1220,9 +1224,9 @@ function renderBmsz(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 4 · at the face</div>
   <h2 class="title">BMSZ identification and marking</h2>
-  ${help(`<p class="sub">Visual identification first, then confirmation. Marking type is decided by the
+  <p class="sub">Visual identification first, then confirmation. Marking type is decided by the
     system from what you record — it is not a free choice.
-    <span class="clause">STD-201 §9.6.3, §9.7 · procedure UNKI-MIN-MRM-PRO-200</span></p>`)}
+    <span class="clause">STD-201 §9.6.3, §9.7 · procedure UNKI-MIN-MRM-PRO-200</span></p>
 
   <div class="note ${due?'warn':'info'}"><span class="mk">${due?'◆':'i'}</span><div>
     Blast number <b>${esc(place.blastNumber)}</b> — this end is due for
@@ -1488,9 +1492,9 @@ function renderOffsets(main){
   main.innerHTML=`
   <div class="eyebrow">Stage 5 · at the face — core record</div>
   <h2 class="title">Blast offset record</h2>
-  ${help(`<p class="sub">Deviation of the blasted profile from the design cut. Over-break and under-break
+  <p class="sub">Deviation of the blasted profile from the design cut. Over-break and under-break
     caused by the blast — geological displacement is recorded under Structures.
-    <span class="clause">STD-201 §9.8</span></p>`)}
+    <span class="clause">STD-201 §9.8</span></p>
 
   <div class="card">
     <h3 class="sec">Tape set-up <span class="clause">§9.8.ii–v</span></h3>
@@ -1656,9 +1660,9 @@ function renderStructure(main){
   main.innerHTML=`
   <div class="eyebrow">At the face</div>
   <h2 class="title">Structures and joints</h2>
-  ${help(`<p class="sub">All geological structures within <b>3 m of the face</b> must be recorded and all
+  <p class="sub">All geological structures within <b>3 m of the face</b> must be recorded and all
     joints noted. These are entered into the stope status book at the end of the shift.
-    <span class="clause">STD-201 §9.3, §9.6.3</span></p>`)}
+    <span class="clause">STD-201 §9.3, §9.6.3</span></p>
 
   <div class="card">
     <h3 class="sec">Type</h3>
