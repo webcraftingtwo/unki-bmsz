@@ -264,21 +264,6 @@ td.n{font-family:var(--mono);}
 .gate.open .gs{color:var(--paint);}
 .gate.shut .gs{color:var(--faint);}
 
-/* ── SOS floating button ──────────────────────────────────── */
-.sos{position:fixed;right:22px;bottom:22px;width:86px;height:86px;border-radius:50%;
-  background:var(--rust);border:3px solid #FF7C60;color:#fff;font-family:var(--mono);
-  font-weight:800;font-size:15px;letter-spacing:.05em;z-index:50;
-  box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 0 rgba(224,74,47,.55);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  animation:sospulse 2.6s ease-out infinite;}
-.sos .g{font-size:26px;line-height:1;}
-.sos:active{transform:scale(.94);}
-@keyframes sospulse{0%{box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 0 rgba(224,74,47,.5);}
-  70%{box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 22px rgba(224,74,47,0);}
-  100%{box-shadow:0 8px 26px rgba(0,0,0,.65),0 0 0 0 rgba(224,74,47,0);}}
-@media (max-width:600px){.sos{width:74px;height:74px;right:16px;bottom:16px;font-size:13px;}
-  .sos .g{font-size:22px;}}
-
 /* ── flash toast ──────────────────────────────────────────── */
 .flash{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--grow);
   color:#08200F;font-family:var(--mono);font-size:15px;font-weight:700;padding:14px 26px;
@@ -287,13 +272,6 @@ td.n{font-family:var(--mono);}
 .flash.show{opacity:1;}
 .flash.bad{background:var(--rust);color:#fff;}
 
-/* ── modal ────────────────────────────────────────────────── */
-.scrim{position:fixed;inset:0;background:rgba(6,5,3,.86);z-index:80;display:flex;
-  align-items:flex-end;justify-content:center;padding:0;}
-@media (min-width:700px){.scrim{align-items:center;padding:24px;}}
-.sheet{background:var(--panel);border:1.5px solid var(--rust);border-radius:14px 14px 0 0;
-  width:100%;max-width:640px;max-height:92vh;overflow-y:auto;padding:22px 20px 30px;}
-@media (min-width:700px){.sheet{border-radius:14px;}}
 
 /* ── full screen stages ───────────────────────────────────── */
 .stage{min-height:100vh;display:flex;flex-direction:column;padding:34px 22px 60px;
@@ -379,15 +357,14 @@ hr.div{border:none;border-top:1px solid var(--line);margin:22px 0;}
    ═══════════════════════════════════════════════════════════════════════ */
 
 const PFX = 'unkigeo';
-const KINDS = ['faceLog','bmsz','offsetSet','structure','hazard','note','shift','engagement'];
+const KINDS = ['faceLog','bmsz','offsetSet','structure','note','shift'];
 let cache = {}; KINDS.forEach(k=>cache[k]=[]);
 
-let stage   = 'login';     // login → reentry → preshift → app → signout
+let stage   = 'login';     // login → reentry → app → signout
 let VIEW    = 'dash';
 let session = null;        // {name, role, employeeNo, section}
 let place   = null;        // selected workplace, hydrated from re-entry feed
 let shift   = null;        // active shift record with all gate states
-let sosOpen = false;
 
 /* ═══ 1 · PEOPLE ══════════════════════════════════════════════════════ */
 
@@ -406,96 +383,36 @@ const CAN = {
 };
 const can = k => session ? !!(CAN[session.role]||{})[k] : false;
 
-/* ═══ 2 · SHE CHECKLISTS — verbatim from STD-201 ══════════════════════ */
+/* ═══ 2 · REFERENCE DATA ══════════════════════════════════
 
-/* §8.1.1 — the Geo-Tech gives task instructions to the team and inspects
-   PPE. The crew must report missing/inadequate/defective PPE. */
-const PPE = [
-  ['Hard hat',                    '§8.1.1'],
-  ['Overalls',                    '§8.1.1'],
-  ['Sinking suit',                '§8.1.1'],
-  ['Gumboots',                    '§8.1.1'],
-  ['Goggles',                     '§8.1.1'],
-  ['Gloves',                      '§8.1.1'],
-  ['Cap lamp and cap lamp belt',  '§8.1.1'],
-  ['Rescue pack',                 '§8.1.1'],
-  ['Respirator',                  '§8.1.1'],
-  ['Ear plugs / ear muffs',       '§8.1.1'],
-  ['Safety belt / safety harness','§8.1.1'],
-];
+   REWORK, Chief Geologist meeting notes — deviation authorised under
+   §7.3. The PPE, tools, transport, underground register and XRF
+   pre-inspection lists were removed on the grounds that they duplicate
+   controls the mine already runs elsewhere. The geological hazard form
+   went with them.
 
-/* §8.2.1 + §9.4 — stated to be the MINIMUM tools required. */
-const TOOLS = [
-  ['10 m soft tape',                        'Base tape · §8.2.1'],
-  ['50 m soft tape',                        'Top to bottom of bord, taut · §9.8.v'],
-  ['Compass / clinometer',                  'Strike and dips · §8.2.1'],
-  ['Clinorule',                             'Offsets · §8.2.1'],
-  ['Yellow spray paint',                    'BMSZ marking · §8.2.1'],
-  ['Wet strength notebook (Orange No 248)', 'Measurements and lithology · §8.2.1'],
-  ['Pencils 2H–4H, sharpener, eraser',      'Tied to notebook or slit in cover · §8.2.1'],
-  ['Geological hammer',                     '§8.2.1'],
-  ['Sample bag',                            '§8.2.1'],
-  ['Distometer',                            'If available · §8.2.1'],
-  ['Niton XL3t handheld XRF analyser',      '§9.4'],
-];
+   ONE safety control was kept, and it blocks: the overseer's
+   declaration that the area was made safe. It lives on the face log.
 
-/* §8.2.2 — transportation of men and equipment. */
-const TRANSPORT = [
-  ['Equipment in provided suitable containers (e.g. XRF hand analyser)','§8.2.2'],
-  ['No personnel transported with equipment in the same compartment',  '§8.2.2'],
-  ['All damages reported',                                             '§8.2.2'],
-  ['Proper carrying techniques practised',                             '§8.2.2'],
-];
+   §9.2 readiness is retained — the standard forbids marking an end that
+   is not supported, lashed and cleaned to the footwall, and nothing in
+   the notes lifted that.
+   ════════════════════════════════════════════════════════════════════ */
 
-/* §9.5 — underground geology checklist, before proceeding underground. */
-const REGISTER = [
-  ['Underground departure time entered',            '§9.5.i(a)'],
-  ['Purpose of underground visit entered',          '§9.5.i(b)'],
-  ['Areas to be visited / inspected entered',       '§9.5.i(c)'],
-  ['Comments — accompanying visitors etc.',         '§9.5.i(d)'],
-];
-
-/* §9.6.2 — preparing for reef/BMSZ marking. */
-const XRF_PREP = [
-  ['Handheld XRF analyser collected',                        '§9.6.2'],
-  ['XRF usage log sheet completed per Radiation Protection Programme','§9.6.2'],
-  ['Departure time entered in Geology Personnel Underground Log Book','§9.6.2'],
-  ['All equipment confirmed in good condition and working properly',  '§9.6.2'],
-];
-
-/* §8.3 — checking of work area, at the end. */
-const ACCESS = [
-  ['Miner in charge notified of the presence of the geology team',      '§8.3'],
-  ['Miner has signed the Geo-Tech field book as acknowledgement',       '§8.3'],
-  ['Permission to enter obtained from Line Management',                 '§9.5.ii'],
-  ['Line Management has advised of hazards in the workplace',           '§9.5.ii'],
-  ['Geo-Tech and responsible miner accessed the end together',          '§8.3'],
-  ['Area thoroughly watered down to allay dust',                        '§8.3'],
-  ['Area barred down to dislodge bad hangings',                         '§8.3'],
-  ['Appointed person has certified the area fit for working',           '§8.3'],
-  ['Applicable work permits obtained',                                  '§8.3'],
-  ['No barricade crossed — wire strand or substantial barricade',       '§9.5.v'],
-];
-
-/* §9.2 — frequency of marking. Hard gate: an end cannot be marked
-   unless all three are true. */
+/* §9.2 — hard gate. An end cannot be marked unless all three are true. */
 const READINESS = [
   ['End is supported',                    '§9.2'],
   ['End is lashed to the footwall',       '§9.2'],
   ['End is cleaned to the footwall',      '§9.2 — "No end will be marked unless it is cleaned to the footwall"'],
 ];
 
-/* §8.3.1 / §8.3.2 / §8.3.3 — risks the technician must acknowledge. */
-const RISKS = {
-  Safety: ['Fall of ground','Noise from working underground machinery',
-           'Slipping / tripping and falling','Cap lamp failure',
-           'Being run over by underground machinery'],
-  Health: ['Dust','Fatigue','Dehydration','Inhaling paint'],
-  Environmental: ['Contamination from spray paint can disposal',
-                  'Contamination from distometer battery disposal',
-                  'Battery-powered gadgets must be rechargeable only',
-                  'Empty cans returned to stores and exchanged one-for-one'],
-};
+/* TARP — Trigger Action Response Plan class. REWORK: added to the face
+   log. DERIVED: the notes give the four values but not their meaning,
+   so no behaviour is attached to the choice. */
+const TARP = ['1','2','3','S'];
+
+/* REWORK: the face log now records who was on the face. */
+const TEAM_ROLES = ['Section manager','Geologist','Shaft geologist','Official'];
 
 /* §9.3 — structures that may affect reef/BMSZ. */
 const STRUCTURES = [
@@ -510,16 +427,56 @@ const STRUCTURES = [
   {t:'Joint',      n:'All joints within 3 m of face must be noted. §9.6.3'},
 ];
 
-/* ═══ 3 · LIMIT SETS ══════════════════════════════════════════════════
-   From the supplied face marking sheets. The "mining cut" series on the
-   NS3 chart plots at exactly these limit values, confirming the limits
-   ARE the design cut envelope. Versioned — change requires Chief
-   Geologist authorisation (§7.3). */
+/* ═══ 3 · UNITS AND LIMIT SETS ═══════════════════════════════
 
-const LIMITS = {
-  bord:    {label:'Bord / ledging decline', hw:0.45, fw:-1.35, src:'Sheet 2NB3 12-07-10'},
-  decline: {label:'Decline / strike drive', hw:1.50, fw:-1.00, src:'Sheets MM 26-04-10, NS3 12-07-10'},
+   REWORK §1: every offset is stored in CENTIMETRES — what the
+   technician reads off the tape. A reading converted on entry is a
+   reading that can be converted wrongly, and once stored there is
+   nothing left to check it against.
+
+   Metres appear at exactly two places, both of them figures leaving
+   geology for management: the width-control report and the management
+   screen. Both go through toM(). Nowhere else in this file converts.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* cm → m, for management figures only. */
+const toM = cm => cm==null ? null : cm/100;
+
+/* Limit sets are versioned data, never constants to edit in place.
+   Changing one requires Chief Geologist authorisation (§7.3) and an
+   audit row. The applied set is snapshotted onto every record it
+   judged, so a limit revised next year does not silently restate what
+   an old face was measured against. */
+const LIMIT_SET = {
+  version: '2026-09-CG-REWORK',
+  basis:   'Chief Geologist meeting notes; sheets 2NB3 12-07-10, MM 26-04-10, NS3 12-07-10',
 };
+const LIMITS = {
+  bord:    {label:'Bord / ledging decline', hw:45,  fw:-135, src:'Sheet 2NB3 12-07-10'},
+  decline: {label:'Decline / strike drive', hw:150, fw:-100, src:'Sheets MM 26-04-10, NS3 12-07-10'},
+};
+
+/* REWORK §3: a face with any station mined above this is flagged at
+   save, not recomputed per report, and the management screen opens on
+   flagged faces first. */
+const HEIGHT_FLAG_CM = 200;
+
+/* REWORK §2: the traverse is applied, not offered. Stations at 1 m,
+   the first 1 m off the sidewall, no station zero, count = face length
+   − 1. This overrides §9.8.iv's two-metre interval, which the mine does
+   not work to. It is applied because a face measured at a different
+   spacing cannot be set beside the others, and comparison across faces
+   is the only reason these readings are collected. The interval is
+   still written onto every record, so an old reading stays readable at
+   the spacing it was taken at. */
+const STATION_INTERVAL_M = 1;
+const MANDATORY_M = [2,5];
+
+/* Station i (0-based) sits at (i+1) metres. There is no station zero. */
+const stationDist = i => (i+1)*STATION_INTERVAL_M;
+const stationCount = faceLength => Math.max(1, Math.floor(faceLength/STATION_INTERVAL_M) - 1);
+/* Which mandatory readings this face is long enough to carry. */
+const mandatoryIdx = n => MANDATORY_M.map(m=>m/STATION_INTERVAL_M-1).filter(i=>i<n);
 
 /* Blast-induced offset causes. The offset module records deviation of the
    blasted profile from the design cut — over-break and under-break caused
@@ -536,10 +493,6 @@ const BLAST_CAUSES = [
   'Marking not followed by crew',
   'Other — see notes',
 ];
-
-const HAZ_TYPES = ['Fall of ground risk','Unsupported ground','Major jointing','Fault',
-  'Shear zone','Dyke','Ground deterioration','Water intersection','Methane detected',
-  'Machinery / vehicle risk','Cap lamp / lighting failure','Other'];
 
 /* ═══ 4 · RE-ENTRY INTEGRATION ════════════════════════════════════════
 
@@ -696,49 +649,43 @@ async function syncNow(){
   flash(n? 'Synced '+n+' record(s) to MRM' : 'Already up to date');
   render();
 }
-/* ═══ 6 · SHIFT & GATE MODEL ══════════════════════════════════════════
-   The procedure is a locked chain. A gate cannot open until the previous
-   one is fully satisfied. This is the "no loopholes" requirement — the
-   technician physically cannot reach the marking screen without the SHE
-   and access record being complete and attributable. */
+/* ═══ 6 · SHIFT & GATE MODEL ══════════════════════
+   Still a locked chain, one gate shorter. REWORK §5 removed the
+   pre-shift and access inspection lists, so the chain now starts at the
+   face log — which carries the one safety control that was kept.
+
+   THE GATE: a face log cannot be submitted with the area declared not
+   made safe, or with no overseer named. Until a face log exists, BMSZ
+   marking, offsets and structures are unreachable. If any of those
+   becomes reachable without it, that is a bug, not a shortcut. */
 
 function newShift(){
   return {
     id:uid(), date:new Date().toISOString().slice(0,10), startedAt:nowTS(), endedAt:null,
-    shiftName:'Morning', tickSheetRef:'',
-    register:{}, ppe:{}, tools:{}, transport:{}, xrf:{},
-    defects:'', risksAck:false,
-    team:[], teamInstructed:false,
-    placeId:null, access:{}, readiness:{}, accessAt:null, accessBy:'',
-    signout:{}, xrfDownloaded:false, tallyUpdated:false, deviation:null,
+    shiftName:'Morning',
+    placeId:null,
+    bmszAt:null,          // REWORK §4 — start of the BMSZ → offset timer
+    signout:{}, deviation:null,
   };
 }
-const allDone = (obj,list)=> list.every(x=>obj[x[0]]===true);
 
 function gates(){
   const s = shift;
-  if(!s) return {pre:'shut',access:'shut',capture:'shut',out:'shut'};
-  const pre = s.risksAck && s.teamInstructed &&
-              allDone(s.register,REGISTER) && allDone(s.ppe,PPE) &&
-              allDone(s.tools,TOOLS) && allDone(s.transport,TRANSPORT) &&
-              allDone(s.xrf,XRF_PREP);
-  const acc = pre && !!place && allDone(s.access,ACCESS) && allDone(s.readiness,READINESS);
+  if(!s) return {log:'shut',capture:'shut',out:'shut',counts:{logs:0,marks:0,offs:0}};
   const logs = cache.faceLog.filter(e=>e.shiftId===s.id).length;
   const marks= cache.bmsz.filter(e=>e.shiftId===s.id).length;
   const offs = cache.offsetSet.filter(e=>e.shiftId===s.id).length;
   return {
-    pre:    pre?'done':'open',
-    access: acc?'done':(pre?'open':'shut'),
-    capture:acc?(logs&&marks&&offs?'done':'open'):'shut',
-    out:    (acc&&logs&&marks&&offs)?'open':'shut',
+    log:     logs?'done':'open',
+    capture: logs?((marks&&offs)?'done':'open'):'shut',
+    out:     (logs&&marks&&offs)?'open':'shut',
     counts:{logs,marks,offs},
   };
 }
 const unlocked = v => {
   const g = gates();
-  if(['dash','preshift','team','hazard','note','reports'].includes(v)) return true;
-  if(v==='access') return g.pre==='done';
-  if(['facelog','bmsz','offsets','structure'].includes(v)) return g.access==='done';
+  if(['dash','facelog','note','management','reports'].includes(v)) return true;
+  if(['bmsz','offsets','structure'].includes(v)) return g.log==='done';
   if(v==='signout') return g.out==='open';
   return true;
 };
@@ -885,256 +832,53 @@ async function openPlace(id){
   };
   shift.placeId = r.id;
   await put('place', place); await put('shift:current', shift);
-  stage='app'; VIEW = gates().pre==='done' ? 'access' : 'preshift';
+  stage='app'; VIEW = 'facelog';
   renderShell();
 }
 
-/* ═══ 9 · PRE-SHIFT (surface) ═════════════════════════════════════════ */
+/* ═══ 12 · FACE LOG ═══════════════════════════════════════════════════
 
-function checkRow(groupKey,key,label,clause,state,failable){
-  const on = state[key]===true, bad = state[key]==='fail';
-  return `<div class="check ${on?'on':bad?'fail':''}" data-grp="${groupKey}" data-k="${esc(key)}">
-    <div class="box">✓</div>
-    <div class="txt">${esc(label)}<small>${esc(clause)}</small></div>
-    ${failable?`<button class="flag" data-fail="${esc(key)}" data-grp="${groupKey}">${bad?'Reported':'Report'}</button>`:''}
-  </div>`;
+   REWORK §4. Cut: blast number, advance, bord width, face condition,
+   BMSZ number. Added: channel id, distance to face, TARP class, XRF
+   reading, an optional design-cut pair in cm, structural comment, team
+   and the overseer acknowledgement.
+
+   Two rules live here and they behave differently on purpose:
+
+   · THE 9 m CHANNEL RULE WARNS. Past roughly 9 m the channel assay can
+     no longer be tied to the face. The app says so and records the
+     reading anyway. A face 11 m off its channel is a real face, and the
+     problem with it is exactly what a geologist needs to see — refusing
+     it would lose the observation and the problem together.
+
+   · THE AREA DECLARATION BLOCKS. Geology does not send anyone to a face
+     that has not been made safe, and a declaration with nobody behind
+     it is not one. Save is disabled, not merely warned about.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const CHANNEL_WARN_M = 9;
+
+let FL = null;   // working face log state, so a part-typed log survives a re-render
+
+function newFaceLog(){
+  return { readiness:{}, tarp:'', team:[], areaSafe:null, overseer:'',
+           structural:'', channelId:'', distToFace:'', xrf:'',
+           designHW:'', designFW:'' };
 }
-function checkGroup(title,groupKey,list,state,failable){
-  const done=list.filter(x=>state[x[0]]===true).length;
-  return `<div class="card ${done===list.length?'ok':''}">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
-      <h3 class="sec" style="margin-bottom:14px">${title}</h3>
-      <span class="clause">${done} / ${list.length}</span>
-    </div>
-    ${list.map(x=>checkRow(groupKey,x[0],x[0],x[1],state,failable)).join('')}
-    <button class="btn ghost sm" style="width:100%;margin-top:10px" data-all="${groupKey}">Confirm all checked</button>
-  </div>`;
-}
-
-function renderPreshift(main){
-  const s=shift;
-  main.innerHTML = `
-  <div class="eyebrow">Stage 1 · surface</div>
-  <h2 class="title">Pre-shift preparation</h2>
-  <p class="sub">Complete before proceeding underground. The access gate stays locked until
-    every item here is confirmed. <span class="clause">STD-201 §8.1, §8.2, §9.5, §9.6.1, §9.6.2</span></p>
-
-  <div class="card pri">
-    <h3 class="sec">Shift and planning</h3>
-    <div class="grid g3">
-      <div><label class="f" for="shname">Shift</label>
-        <select id="shname">${['Morning','Afternoon','Night'].map(x=>
-          `<option ${s.shiftName===x?'selected':''}>${x}</option>`).join('')}</select></div>
-      <div><label class="f" for="tick">Tick sheet reference <span class="clause">§9.6.1</span></label>
-        <input type="text" id="tick" class="num" value="${esc(s.tickSheetRef)}" placeholder="Signed at planning meeting"></div>
-      <div><label class="f">Started</label>
-        <input type="text" class="num" value="${fmtTS(s.startedAt)}" disabled></div>
-    </div>
-    ${help(`<p class="hint">The tick sheet signed off at the planning meeting is the planning basis for
-      the month's ends and feeds the Stope Marking Tally, Form STD2.1A. <span class="clause">§9.2, §9.6.1</span></p>`)}
-  </div>
-
-  ${checkGroup('Underground register','register',REGISTER,s.register,false)}
-  ${checkGroup('PPE inspection','ppe',PPE,s.ppe,true)}
-  ${checkGroup('Tools and equipment — minimum required','tools',TOOLS,s.tools,true)}
-  ${checkGroup('Transport of men and equipment','transport',TRANSPORT,s.transport,false)}
-  ${checkGroup('XRF and log book','xrf',XRF_PREP,s.xrf,false)}
-
-  <div class="card">
-    <h3 class="sec">Defects reported to supervisor</h3>
-    <textarea id="defects" placeholder="Missing, inadequate or defective PPE / tools. The crew must report these. §8.1, §8.2">${esc(s.defects)}</textarea>
-  </div>
-
-  <div class="card ${s.risksAck?'ok':'hot'}">
-    <h3 class="sec">Risk acknowledgement <span class="clause">§8.3.1–8.3.3</span></h3>
-    ${Object.entries(RISKS).map(([g,items])=>`
-      <div style="margin-bottom:14px">
-        <div class="clause" style="margin-bottom:8px;color:var(--paint)">${g.toUpperCase()} RISKS</div>
-        <div class="chips">${items.map(i=>`<span class="chip" style="pointer-events:none;height:auto;padding:10px 14px;font-size:14px">${esc(i)}</span>`).join('')}</div>
-      </div>`).join('')}
-    <div class="check ${s.risksAck?'on':''}" data-ack="1">
-      <div class="box">✓</div>
-      <div class="txt">I have read these risks and briefed the team on them.
-        <small>Task instructions given to team · §8.1</small></div>
-    </div>
-  </div>
-
-  <button class="btn" id="toTeam">Continue to team engagement</button>`;
-
-  wireChecks(main);
-  main.querySelector('#shname').onchange=e=>{ shift.shiftName=e.target.value; put('shift:current',shift); };
-  main.querySelector('#tick').oninput=e=>{ shift.tickSheetRef=e.target.value; put('shift:current',shift); };
-  main.querySelector('#defects').oninput=e=>{ shift.defects=e.target.value; put('shift:current',shift); };
-  main.querySelector('[data-ack]').onclick=()=>{ shift.risksAck=!shift.risksAck; put('shift:current',shift); render(); };
-  main.querySelector('#toTeam').onclick=()=>setView('team');
-}
-
-function wireChecks(root){
-  root.querySelectorAll('.check[data-grp]').forEach(el=>{
-    el.onclick=(ev)=>{
-      if(ev.target.dataset.fail!==undefined) return;
-      const g=el.dataset.grp, k=el.dataset.k;
-      shift[g][k] = shift[g][k]===true ? undefined : true;
-      put('shift:current',shift); render();
-    };
-  });
-  root.querySelectorAll('[data-fail]').forEach(b=>{
-    b.onclick=(ev)=>{ ev.stopPropagation();
-      const g=b.dataset.grp,k=b.dataset.fail;
-      shift[g][k] = shift[g][k]==='fail' ? undefined : 'fail';
-      put('shift:current',shift); render();
-      flash('Defect recorded — report to supervisor',true);
-    };
-  });
-  root.querySelectorAll('[data-all]').forEach(b=>{
-    b.onclick=()=>{
-      const g=b.dataset.all;
-      const src={register:REGISTER,ppe:PPE,tools:TOOLS,transport:TRANSPORT,xrf:XRF_PREP,
-                 access:ACCESS,readiness:READINESS}[g];
-      src.forEach(x=>{ if(shift[g][x[0]]!=='fail') shift[g][x[0]]=true; });
-      put('shift:current',shift); render();
-    };
-  });
-}
-
-/* ═══ 10 · TEAM ENGAGEMENT ════════════════════════════════════════════ */
-
-function renderTeam(main){
-  const s=shift;
-  main.innerHTML=`
-  <div class="eyebrow">Stage 1b · surface</div>
-  <h2 class="title">Team and workmate engagement</h2>
-  <p class="sub">The Geo-Tech gives task instructions to the team and inspects their PPE.
-    Each person is recorded by name. <span class="clause">STD-201 §8.1</span></p>
-
-  <div class="card">
-    <h3 class="sec">Add team member</h3>
-    <div class="grid g3">
-      <div><label class="f" for="tmN">Name</label><input type="text" id="tmN"></div>
-      <div><label class="f" for="tmNo">Employee no.</label><input type="text" id="tmNo" class="num"></div>
-      <div><label class="f" for="tmR">Role</label>
-        <select id="tmR"><option>Assistant</option><option>Sampler</option><option>Miner</option>
-        <option>Shift Boss</option><option>Team Leader</option><option>Trainee</option><option>Visitor</option></select></div>
-    </div>
-    <button class="btn ghost" id="tmAdd">Add to team</button>
-  </div>
-
-  ${s.team.length?s.team.map((m,i)=>`
-    <div class="item ${m.ppeOk&&m.briefed?'':'hot'}">
-      <div class="ih"><span class="it">${esc(m.name)}</span>
-        <span class="ts">${esc(m.role)} · ${esc(m.no)}</span></div>
-      <div class="check ${m.ppeOk?'on':''}" data-tm="${i}" data-fld="ppeOk">
-        <div class="box">✓</div><div class="txt">PPE inspected and adequate<small>§8.1</small></div></div>
-      <div class="check ${m.briefed?'on':''}" data-tm="${i}" data-fld="briefed">
-        <div class="box">✓</div><div class="txt">Task instruction given and understood<small>§8.1</small></div></div>
-      <button class="btn ghost sm" data-rm="${i}" style="margin-top:8px">Remove</button>
-    </div>`).join(''):'<div class="empty">No team members recorded yet</div>'}
-
-  <div class="card ${s.teamInstructed?'ok':''}">
-    <div class="check ${s.teamInstructed?'on':''}" data-tinstr="1">
-      <div class="box">✓</div>
-      <div class="txt">Task instructions given to the whole team and PPE inspected
-        <small>Geo-Tech declaration · §8.1</small></div>
-    </div>
-    ${help(`<p class="hint">Working alone is permitted by the standard, but the declaration is still
-      required so the record shows who was present.</p>`)}
-  </div>
-
-  <div class="btnrow">
-    <button class="btn ghost" id="back">Back to pre-shift</button>
-    <button class="btn" id="next">Continue</button>
-  </div>`;
-
-  main.querySelector('#tmAdd').onclick=()=>{
-    const n=main.querySelector('#tmN').value.trim();
-    if(!n){ flash('Name required',true); return; }
-    s.team.push({name:n,no:main.querySelector('#tmNo').value.trim(),
-                 role:main.querySelector('#tmR').value,ppeOk:false,briefed:false});
-    put('shift:current',s); render();
-  };
-  main.querySelectorAll('[data-tm]').forEach(el=>el.onclick=()=>{
-    const m=s.team[+el.dataset.tm]; m[el.dataset.fld]=!m[el.dataset.fld];
-    put('shift:current',s); render();
-  });
-  main.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{
-    s.team.splice(+b.dataset.rm,1); put('shift:current',s); render();
-  });
-  main.querySelector('[data-tinstr]').onclick=()=>{
-    s.teamInstructed=!s.teamInstructed; put('shift:current',s); render();
-  };
-  main.querySelector('#back').onclick=()=>setView('preshift');
-  main.querySelector('#next').onclick=()=>{
-    if(gates().pre==='done') setView('access');
-    else { flash('Pre-shift not complete',true); setView('preshift'); }
-  };
-}
-/* ═══ 11 · ACCESS GATE (at the end) ═══════════════════════════════════ */
-
-function renderAccess(main){
-  const s=shift, g=gates();
-  main.innerHTML=`
-  <div class="eyebrow">Stage 2 · at the end</div>
-  <h2 class="title">Workplace access</h2>
-  ${help(`<p class="sub">Nothing can be logged, marked or measured until this record is complete.
-    <span class="clause">STD-201 §8.3, §9.2, §9.5.ii, §9.5.v</span></p>`)}
-
-  <div class="note go"><span class="mk">✓</span><div>
-    <b>${esc(place.bord)}</b> was cleared for re-entry by <b>${esc(place.clearedBy)}</b>
-    at ${fmtT(place.clearedAt)}. Blast <b>${esc(place.blastNumber)}</b>,
-    advance <b>${place.advance} m</b>. Miner selected: ${(place.minerTasks||[]).join(', ')||'—'}.
-  </div></div>
-
-  <div class="note stop"><span class="mk">!</span><div>
-    Access may only be denied for unsafe conditions — poor support, fall of ground, methane.
-    <b>Do not enter a working place if you have any reason to suspect it may be unsafe.</b>
-    If a place is barricaded off, never cross the barrier, whether a single strand of wire or a
-    substantial barricade. <span class="clause">§9.5.iii, §9.5.v</span>
-  </div></div>
-
-  ${checkGroup('Access, permission and area certification','access',ACCESS,s.access,false)}
-  ${checkGroup('End readiness — hard gate','readiness',READINESS,s.readiness,false)}
-
-  <div class="card">
-    <h3 class="sec">Line management sign-off</h3>
-    <div class="grid g2">
-      <div><label class="f" for="accBy">Miner / Shift Boss in charge</label>
-        <input type="text" id="accBy" value="${esc(s.accessBy)}" placeholder="Name and designation"></div>
-      <div><label class="f">Recorded at</label>
-        <input type="text" class="num" value="${s.accessAt?fmtTS(s.accessAt):'not yet certified'}" disabled></div>
-    </div>
-    <p class="hint">The miner signs the Geo-Tech's field book as acknowledgement, and both sign the
-      daily marking sheet. <span class="clause">§8.3, §9.6.2</span></p>
-  </div>
-
-  <button class="btn danger" id="abort">Abandon — conditions unsafe</button>
-  <button class="btn" id="certify" ${g.access==='done'?'':'disabled'}>
-    ${g.access==='done'?'Access certified — begin face log':'Complete all items above'}</button>`;
-
-  wireChecks(main);
-  main.querySelector('#accBy').oninput=e=>{ s.accessBy=e.target.value; put('shift:current',s); };
-  main.querySelector('#abort').onclick=async()=>{
-    await saveEntry('note',{category:'Access abandoned',
-      text:'Workplace '+place.bord+' not entered — conditions unsafe. §9.5.iii'});
-    place=null; shift.placeId=null; await put('place',null); await put('shift:current',shift);
-    stage='reentry'; renderShell();
-  };
-  main.querySelector('#certify').onclick=async()=>{
-    if(!s.accessBy.trim()){ flash('Record the miner in charge',true); return; }
-    s.accessAt=nowTS(); await put('shift:current',s);
-    await saveEntry('engagement',{type:'Access certified', miner:s.accessBy,
-      team:s.team.map(m=>m.name+' ('+m.role+')')});
-    setView('facelog');
-  };
-}
-
-/* ═══ 12 · FACE LOG ═══════════════════════════════════════════════════ */
 
 function renderFaceLog(main){
+  if(!FL) FL = newFaceLog();
   const mine = cache.faceLog.filter(e=>e.shiftId===shift.id);
+  const dist = num(FL.distToFace);
+  const farOff = dist!=null && dist > CHANNEL_WARN_M;
+  const readyDone = READINESS.every(x=>FL.readiness[x[0]]===true);
+  const safe = FL.areaSafe===true && FL.overseer.trim()!=='';
+  const canSave = safe && readyDone;
+
   main.innerHTML=`
-  <div class="eyebrow">Stage 3 · at the face</div>
+  <div class="eyebrow">Stage 1 · at the face</div>
   <h2 class="title">Face log</h2>
-  <p class="sub">Peg reference, advance and face dimensions. Values carried from the re-entry
+  <p class="sub">Peg reference and face length. Values carried from the re-entry
     record are shown pre-filled — correct them if the face differs.
     <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>
 
@@ -1145,70 +889,143 @@ function renderFaceLog(main){
         <input type="text" id="fPeg" class="num" value="${esc(place.peg)}"></div>
       <div><label class="f" for="fPegD">Peg to face (m) <span class="clause">§9.8.i</span></label>
         <input type="number" step="0.1" id="fPegD" class="num" value="${place.pegDistance}"></div>
-      <div><label class="f" for="fBlast">Blast number</label>
-        <input type="text" id="fBlast" class="num" value="${esc(place.blastNumber)}"></div>
-    </div>
-    <div class="grid g4">
-      <div><label class="f" for="fAdv">Advance (m)</label>
-        <input type="number" step="0.1" id="fAdv" class="num" value="${place.advance}"></div>
       <div><label class="f" for="fLen">Face length (m) <span class="clause">§9.8.vi</span></label>
         <input type="number" step="0.1" id="fLen" class="num" value="${place.faceLength}"></div>
-      <div><label class="f" for="fWid"><b>Bord width (m)</b></label>
-        <input type="number" step="0.1" id="fWid" class="num" value="${place.faceWidth}"></div>
-      <div><label class="f" for="fHgt"><b>Bord height (m)</b></label>
-        <input type="number" step="0.1" id="fHgt" class="num" value="${place.faceHeight}"></div>
     </div>
-    <div><label class="f" for="fFP">Distance to capital footwall border (m)</label>
-      <input type="number" step="0.1" id="fFP" class="num" placeholder="Face marking sheet header"></div>
+    <p class="hint">A ${place.faceLength} m face is
+      <b>${stationCount(place.faceLength)} offsets</b> at
+      1–${stationDist(stationCount(place.faceLength)-1)} m.</p>
   </div>
 
   <div class="card">
-    <h3 class="sec">Face condition</h3>
-    <label class="f">Hangingwall condition</label>
-    <div class="chips" id="cHW">${['Good','Fair','Jointed','Loose / brows','Poor'].map(x=>
-      `<button class="chip" data-v="${x}">${x}</button>`).join('')}</div>
-    <label class="f" style="margin-top:16px">Footwall condition</label>
-    <div class="chips" id="cFW">${['Clean to footwall','Partly lashed','Muck on footwall','Wet / water'].map(x=>
-      `<button class="chip" data-v="${x}">${x}</button>`).join('')}</div>
-    <label class="f" style="margin-top:16px">Support observed</label>
-    <div class="chips" id="cSup">${['Roof bolts','Mesh','Straps','Timber','None required','Outstanding'].map(x=>
-      `<button class="chip" data-v="${x}">${x}</button>`).join('')}</div>
-    <label class="f" style="margin-top:16px" for="fNote">Notes</label>
-    <textarea id="fNote" placeholder="Sockets, brows, water, anything the next shift must know"></textarea>
+    <h3 class="sec">Channel and classification</h3>
+    <div class="grid g3">
+      <div><label class="f" for="fChan">Channel ID</label>
+        <input type="text" id="fChan" class="num" value="${esc(FL.channelId)}"
+          placeholder="Sampling channel"></div>
+      <div><label class="f" for="fDist">Distance to face (m)</label>
+        <input type="number" step="0.1" id="fDist" class="num" value="${esc(FL.distToFace)}"
+          placeholder="From the channel"></div>
+      <div><label class="f" for="fXRF">XRF reading <span class="clause">optional</span></label>
+        <input type="text" id="fXRF" class="num" value="${esc(FL.xrf)}" placeholder="—"></div>
+    </div>
+    ${farOff?`<div class="note warn" style="margin-top:14px"><span class="mk">◆</span><div>
+      <b>${dist} m from the channel.</b> Past about ${CHANNEL_WARN_M} m the channel assay can no
+      longer be tied to this face. The reading is recorded anyway — it is flagged on the record
+      so a geologist sees the distance along with the numbers.</div></div>`:''}
+    <label class="f" style="margin-top:16px">TARP class</label>
+    <div class="chips" id="fTarp">${TARP.map(t=>
+      `<button class="chip ${FL.tarp===t?'sel':''}" data-t="${t}">${t}</button>`).join('')}</div>
+    <div class="grid g2" style="margin-top:16px">
+      <div><label class="f" for="fDHW">Design cut H/W (cm) <span class="clause">optional</span></label>
+        <input type="number" step="1" id="fDHW" class="num" value="${esc(FL.designHW)}" placeholder="—"></div>
+      <div><label class="f" for="fDFW">Design cut F/W (cm) <span class="clause">optional</span></label>
+        <input type="number" step="1" id="fDFW" class="num" value="${esc(FL.designFW)}" placeholder="—"></div>
+    </div>
   </div>
 
-  <button class="btn" id="save">Save face log</button>
+  <div class="card">
+    <h3 class="sec">End readiness — hard gate <span class="clause">§9.2</span></h3>
+    ${READINESS.map(x=>`<div class="check ${FL.readiness[x[0]]===true?'on':''}" data-rd="${esc(x[0])}">
+      <div class="box">✓</div><div class="txt">${esc(x[0])}<small>${esc(x[1])}</small></div></div>`).join('')}
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Team on the face</h3>
+    <div class="chips" id="fTeam">${TEAM_ROLES.map(r=>
+      `<button class="chip ${FL.team.includes(r)?'sel':''}" data-r="${esc(r)}"
+        style="height:auto;padding:12px 15px;font-size:14.5px">${esc(r)}</button>`).join('')}</div>
+  </div>
+
+  <div class="card ${safe?'ok':''}">
+    <h3 class="sec">Overseer acknowledgement <span class="clause">the one control that blocks</span></h3>
+    <div class="chips" id="fSafe">
+      <button class="chip ${FL.areaSafe===true?'sel':''}" data-s="yes">Area made safe</button>
+      <button class="chip ${FL.areaSafe===false?'sel rust':''}" data-s="no">Area NOT made safe</button>
+    </div>
+    <label class="f" style="margin-top:16px" for="fOver">Overseer — named person</label>
+    <input type="text" id="fOver" value="${esc(FL.overseer)}" placeholder="Name and designation">
+    ${FL.areaSafe===false?`<div class="note stop" style="margin-top:16px"><span class="mk">⛔</span><div>
+      <b>The area is declared not made safe.</b> This face log cannot be submitted, and BMSZ
+      marking, offsets and structures stay locked. Geology does not send anyone to a face that
+      has not been made safe. Leave the workplace and report it to the miner in charge.
+    </div></div>`:''}
+    ${FL.areaSafe===true&&FL.overseer.trim()===''?`<div class="note warn" style="margin-top:16px">
+      <span class="mk">◆</span><div>Name the overseer who made the declaration. A declaration
+      with nobody behind it is not one.</div></div>`:''}
+  </div>
+
+  <div class="card">
+    <h3 class="sec">Structural comment <span class="clause">written last</span></h3>
+    <textarea id="fStruct" placeholder="Written at the end, when you know the face">${esc(FL.structural)}</textarea>
+  </div>
+
+  <button class="btn" id="save" ${canSave?'':'disabled'}>
+    ${!readyDone?'End readiness outstanding — §9.2'
+      :FL.areaSafe===false?'Blocked — area not made safe'
+      :!safe?'Overseer must be named'
+      :'Save face log'}</button>
 
   <hr class="div">
   <h3 class="sec">This shift — ${mine.length} log(s)</h3>
-  ${mine.length?mine.map(e=>`<div class="item">
-    <div class="ih"><span class="it">${esc(e.bord||place.bord)} · blast ${esc(e.blastNumber)}</span>
+  ${mine.length?mine.map(e=>`<div class="item ${e.channelFar?'hot':''}">
+    <div class="ih"><span class="it">${esc(e.bord||place.bord)}${e.channelId?' · channel '+esc(e.channelId):''}</span>
       <span class="ts">${fmtTS(e.ts)}</span></div>
-    <div class="ib">Advance <b>${e.advance} m</b> · face <b>${e.faceLength} m</b> long ·
-      <b>${e.width} m</b> wide · <b>${e.height} m</b> high<br>
-      Peg ${esc(e.peg)} at <b>${e.pegDistance} m</b><br>
-      H/W: ${esc(e.hwCond)||'—'} · F/W: ${esc(e.fwCond)||'—'} · Support: ${esc(e.support)||'—'}
-      ${e.note?'<br>'+esc(e.note):''}</div>
+    <div class="ib">Face <b>${e.faceLength} m</b> · peg ${esc(e.peg)} at <b>${e.pegDistance} m</b>
+      ${e.tarp?'<br>TARP <b>'+esc(e.tarp)+'</b>':''}
+      ${e.distToFace!=null?'<br>Channel to face <b>'+e.distToFace+' m</b>'+
+        (e.channelFar?' — <b style="color:var(--rust)">beyond '+CHANNEL_WARN_M+' m, assay not tied to this face</b>':''):''}
+      ${e.xrf?'<br>XRF '+esc(e.xrf):''}
+      ${e.designHW!=null||e.designFW!=null?'<br>Design cut '+(e.designHW!=null?e.designHW:'—')+
+        ' / '+(e.designFW!=null?e.designFW:'—')+' cm':''}
+      <br>Area made safe, declared by <b>${esc(e.overseer)}</b>
+      ${e.team&&e.team.length?'<br>Team: '+esc(e.team.join(', ')):''}
+      ${e.structural?'<br>'+esc(e.structural):''}</div>
     <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
   </div>`).join(''):'<div class="empty">No face log recorded for this shift</div>'}`;
 
-  let sel={hwCond:'',fwCond:'',support:''};
-  const wireChips=(id,key)=>main.querySelectorAll('#'+id+' .chip').forEach(b=>b.onclick=()=>{
-    main.querySelectorAll('#'+id+' .chip').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel'); sel[key]=b.dataset.v; });
-  wireChips('cHW','hwCond'); wireChips('cFW','fwCond'); wireChips('cSup','support');
+  const bind=(id,key)=>{ const el=main.querySelector('#'+id); if(el) el.oninput=e=>{ FL[key]=e.target.value; }; };
+  bind('fChan','channelId'); bind('fXRF','xrf');
+  bind('fDHW','designHW');   bind('fDFW','designFW');
+  bind('fStruct','structural');
+  main.querySelector('#fDist').oninput=e=>{ FL.distToFace=e.target.value; render(); };
+  main.querySelector('#fOver').oninput=e=>{ FL.overseer=e.target.value; render(); };
+
+  main.querySelectorAll('#fTarp .chip').forEach(b=>b.onclick=()=>{
+    FL.tarp = FL.tarp===b.dataset.t ? '' : b.dataset.t; render(); });
+  main.querySelectorAll('#fTeam .chip').forEach(b=>b.onclick=()=>{
+    const r=b.dataset.r;
+    FL.team = FL.team.includes(r) ? FL.team.filter(x=>x!==r) : FL.team.concat([r]);
+    render(); });
+  main.querySelectorAll('#fSafe .chip').forEach(b=>b.onclick=()=>{
+    FL.areaSafe = b.dataset.s==='yes'; render(); });
+  main.querySelectorAll('[data-rd]').forEach(el=>el.onclick=()=>{
+    const k=el.dataset.rd;
+    FL.readiness[k] = FL.readiness[k]===true ? undefined : true; render(); });
 
   main.querySelector('#save').onclick=async()=>{
-    const v=id=>main.querySelector('#'+id).value;
-    if(!v('fLen')||!v('fWid')||!v('fHgt')){ flash('Face length, width and height required',true); return; }
-    place.peg=v('fPeg'); place.pegDistance=num(v('fPegD')); place.advance=num(v('fAdv'));
-    place.faceLength=num(v('fLen')); place.faceWidth=num(v('fWid')); place.faceHeight=num(v('fHgt'));
+    /* Re-checked here, not only on the button: a disabled button is a
+       courtesy, the gate is the condition. */
+    if(!READINESS.every(x=>FL.readiness[x[0]]===true)){
+      flash('End readiness is a hard gate — §9.2',true); return; }
+    if(FL.areaSafe!==true){
+      flash('Blocked — the area is not declared made safe',true); return; }
+    if(FL.overseer.trim()===''){ flash('Name the overseer',true); return; }
+    const v=id=>{ const el=main.querySelector('#'+id); return el?el.value:''; };
+    if(!v('fLen')){ flash('Face length required',true); return; }
+    place.peg=v('fPeg'); place.pegDistance=num(v('fPegD')); place.faceLength=num(v('fLen'));
     await put('place',place);
-    await saveEntry('faceLog',{bord:place.bord, peg:v('fPeg'), pegDistance:num(v('fPegD')),
-      blastNumber:v('fBlast'), advance:num(v('fAdv')), faceLength:num(v('fLen')),
-      width:num(v('fWid')), height:num(v('fHgt')), fpBorder:num(v('fFP')),
-      ...sel, note:v('fNote')});
-    render();
+    const d=num(FL.distToFace);
+    await saveEntry('faceLog',{
+      bord:place.bord, peg:v('fPeg'), pegDistance:num(v('fPegD')),
+      faceLength:num(v('fLen')), height:place.faceHeight,
+      channelId:FL.channelId, distToFace:d, channelFar: d!=null && d>CHANNEL_WARN_M,
+      tarp:FL.tarp, xrf:FL.xrf,
+      designHW:num(FL.designHW), designFW:num(FL.designFW),
+      readiness:FL.readiness, team:FL.team.slice(),
+      areaSafe:true, overseer:FL.overseer.trim(),
+      structural:FL.structural});
+    FL=newFaceLog(); render();
   };
 }
 
@@ -1368,6 +1185,8 @@ function renderBmsz(main){
     if(!st.visual||!st.confidence){ flash('Visual identification and confidence required',true); return; }
     const v=id=>{const el=main.querySelector('#'+id); return el?el.value:'';};
     const markType = st.requested ? 'indicative' : 'continuous';
+    /* REWORK §4 — starts the BMSZ → offset timer. */
+    shift.bmszAt = nowTS(); await put('shift:current',shift);
     await saveEntry('bmsz',{visual:st.visual, confidence:st.confidence, lithology:v('bLith'),
       endId:v('xId'), cu:v('xCu'), ni:v('xNi'), ppv:num(v('xPPV')), readings:num(v('xReads')),
       secondOpinion:v('secName'), sampleRequested:st.requested, channelPosition:v('chanPos'),
@@ -1388,93 +1207,121 @@ function renderBmsz(main){
    geological displacement; faults and dykes are recorded separately under
    Structures.
 
-   Measurement geometry is fixed by §9.8:
+   REWORK §1 — every reading is CENTIMETRES, as read off the tape.
+   REWORK §2 — the traverse is applied, not offered: 1 m stations, the
+   first 1 m off the sidewall, no station zero, count = face length − 1,
+   and the 2 m and 5 m readings are mandatory before save. They are the
+   pair every face is compared on, and a face missing them is not
+   comparable with any other.
+   REWORK §3 — hangingwall minus footwall is MINING HEIGHT.
+
+   Measurement geometry otherwise still fixed by §9.8:
      · taken 1 m from the face
      · first station 1 m from the sidewall
      · collected down-dip side → up-dip side
-     · stations at 2 m intervals (§9.8.iv — but the supplied sheets are
-       at 1 m, open decision 12.1, so both are offered)
      · 50 m tape stretched top to bottom of bord and taut, then distometer
-       or 5 m tape used for each reading                                   */
+       or 5 m tape used for each reading
 
-const SG = 3.1;   // pyroxenite specific gravity, t/m³ — configurable
+   Waste tonnage is NOT calculated. The notes give
+   V = face length × mining height × ?, then × 3.21 S.G., and the third
+   term was crossed out. An unconfirmed formula that produces a tonnage
+   figure is worse than no figure, so it is left unbuilt.               */
+
 let OS = null;    // working offset set
 
 function newOffsetSet(){
   const lim = LIMITS[place.headingType];
-  const iv  = 1;
-  const n   = Math.max(2, Math.floor(place.faceLength/iv)+1);
-  return { interval:iv, headingType:place.headingType, faceLength:place.faceLength,
-           advance:place.advance, blastNumber:place.blastNumber,
+  const n   = stationCount(place.faceLength);
+  return { interval:STATION_INTERVAL_M, headingType:place.headingType,
+           faceLength:place.faceLength,
+           /* Snapshot of the limit set that judged this face — rework §7.
+              A limit revised next year must not silently restate what an
+              old face was measured against. */
            hwLimit:lim.hw, fwLimit:lim.fw,
+           limitVersion:LIMIT_SET.version, limitLabel:lim.label,
            stations:Array.from({length:n},()=>({hw:'',fw:'',cause:'',note:''})),
            active:0, field:'hw', tapeTaut:false, downdipFirst:false };
 }
-function rebuildStations(iv){
-  const n=Math.max(2,Math.floor(OS.faceLength/iv)+1);
-  const old=OS.stations;
-  OS.interval=iv;
-  OS.stations=Array.from({length:n},(_,i)=>old[i*(iv===2?2:1)]||{hw:'',fw:'',cause:'',note:''});
-  OS.active=0; OS.field='hw';
-}
+
+/* Every aggregate is derived here and nowhere else, from the stations and
+   the snapshotted limits. Rework §7 has a server recompute these at
+   ingest rather than take them on the word of a handset; this build has
+   no server, so the figures any report shows are the ones this function
+   returns. See the note in §18. */
 function osStats(){
-  let hwB=0,fwB=0,done=0,over=0,ex=[],widths=[];
+  let hwB=0,fwB=0,done=0,over=0,hws=[],fws=[],heights=[];
   const planned = OS.hwLimit - OS.fwLimit;
   OS.stations.forEach(s=>{
     const hw=num(s.hw), fw=num(s.fw);
     if(hw!=null&&hw>OS.hwLimit){ hwB++; over+=hw-OS.hwLimit; }
     if(fw!=null&&fw<OS.fwLimit) fwB++;
-    if(hw!=null&&fw!=null){ done++; const w=hw-fw; widths.push(w); ex.push(w-planned); }
+    if(hw!=null) hws.push(hw);
+    if(fw!=null) fws.push(fw);
+    if(hw!=null&&fw!=null){ done++; heights.push(hw-fw); }
   });
-  const meanW = widths.length?widths.reduce((a,b)=>a+b,0)/widths.length:null;
-  const meanEx= ex.length?ex.reduce((a,b)=>a+b,0)/ex.length:null;
-  const vol   = meanEx!=null?Math.max(0,meanEx)*OS.faceLength*(OS.advance||0):null;
-  return {hwB,fwB,done,total:OS.stations.length,planned,
-          meanOver:hwB?over/hwB:0, meanW, meanEx,
-          dilution: meanEx!=null&&planned>0 ? (meanEx/planned)*100 : null,
-          wasteVol:vol, wasteT: vol!=null?vol*SG:null};
+  const mean = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const meanH = mean(heights);
+  return {hwB, fwB, done, total:OS.stations.length, planned,
+          meanOver: hwB?over/hwB:0,
+          meanHW: mean(hws), meanFW: mean(fws), meanHeight: meanH,
+          minHeight: heights.length?Math.min(...heights):null,
+          maxHeight: heights.length?Math.max(...heights):null,
+          /* REWORK §3 — flagged once at save, not recomputed per report. */
+          heightFlag: heights.some(h=>h>HEIGHT_FLAG_CM),
+          overCut: meanH!=null&&planned>0 ? ((meanH-planned)/planned)*100 : null};
 }
 
+/* The readings this face cannot be saved without — rework §2. */
+function missingMandatory(){
+  return mandatoryIdx(OS.stations.length).filter(i=>{
+    const s=OS.stations[i];
+    return num(s.hw)==null || num(s.fw)==null;
+  });
+}
+
+/* All axis values are centimetres. Nothing here converts to metres. */
 function sectionSVG(){
   const W=900,H=340,PL=64,PR=22,PY=30;
-  const top=Math.max(OS.hwLimit+0.6, ...OS.stations.map(s=>num(s.hw)||0))+0.35;
-  const bot=Math.min(OS.fwLimit-0.4, ...OS.stations.map(s=>num(s.fw)||0))-0.25;
+  const top=Math.max(OS.hwLimit+60, ...OS.stations.map(s=>num(s.hw)||0))+35;
+  const bot=Math.min(OS.fwLimit-40, ...OS.stations.map(s=>num(s.fw)||0))-25;
   const n=Math.max(OS.stations.length,2);
-  const X=i=>PL+i*(W-PL-PR)/(n-1);
+  const X=i=>n===1?PL+(W-PL-PR)/2:PL+i*(W-PL-PR)/(n-1);
   const Y=v=>PY+((top-v)/(top-bot))*(H-PY*2-24);
   const line=(sel)=>{let d='',open=false;
     OS.stations.forEach((s,i)=>{const v=num(s[sel]); if(v==null){open=false;return;}
       d+=(open?'L':'M')+X(i).toFixed(1)+','+Y(v).toFixed(1)+' '; open=true;}); return d;};
-  const ticks=[]; for(let v=Math.ceil(top*2)/2; v>=bot; v-=0.5) ticks.push(+v.toFixed(2));
+  const ticks=[]; for(let v=Math.ceil(top/50)*50; v>=bot; v-=50) ticks.push(v);
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img"
-    aria-label="Face section showing hangingwall and footwall offsets against design limits">
+    aria-label="Face section in centimetres showing hangingwall and footwall offsets against design limits">
     ${ticks.map(v=>`<line x1="${PL}" x2="${W-PR}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2A2418"/>
       <text x="${PL-10}" y="${Y(v)+5}" text-anchor="end" font-size="13" fill="#756C58"
-        font-family="monospace">${v.toFixed(2)}</text>`).join('')}
+        font-family="monospace">${v}</text>`).join('')}
     <rect x="${PL}" y="${Y(OS.hwLimit)}" width="${W-PL-PR}" height="${Math.max(0,Y(OS.fwLimit)-Y(OS.hwLimit))}"
       fill="#5FB87A" opacity="0.07"/>
     <line x1="${PL}" x2="${W-PR}" y1="${Y(OS.hwLimit)}" y2="${Y(OS.hwLimit)}" stroke="#E04A2F"
       stroke-width="2.5" stroke-dasharray="9 6"/>
     <text x="${W-PR}" y="${Y(OS.hwLimit)-9}" text-anchor="end" font-size="13" fill="#E04A2F"
-      font-family="monospace" letter-spacing="1">DESIGN CUT — H/W ${OS.hwLimit.toFixed(2)}</text>
+      font-family="monospace" letter-spacing="1">DESIGN CUT — H/W ${OS.hwLimit} cm</text>
     <line x1="${PL}" x2="${W-PR}" y1="${Y(OS.fwLimit)}" y2="${Y(OS.fwLimit)}" stroke="#E04A2F"
       stroke-width="2.5" stroke-dasharray="9 6"/>
     <text x="${W-PR}" y="${Y(OS.fwLimit)+20}" text-anchor="end" font-size="13" fill="#E04A2F"
-      font-family="monospace" letter-spacing="1">DESIGN CUT — F/W ${OS.fwLimit.toFixed(2)}</text>
+      font-family="monospace" letter-spacing="1">DESIGN CUT — F/W ${OS.fwLimit} cm</text>
     <line x1="${PL}" x2="${W-PR}" y1="${Y(0)}" y2="${Y(0)}" stroke="#FFC61A" stroke-width="4"/>
     <text x="${PL+6}" y="${Y(0)-11}" font-size="14" fill="#FFC61A" font-weight="700"
       font-family="monospace" letter-spacing="2">BMSZ</text>
     <path d="${line('hw')}" fill="none" stroke="#F2ECDD" stroke-width="2.5" stroke-linejoin="round"/>
     <path d="${line('fw')}" fill="none" stroke="#B0A692" stroke-width="2.5" stroke-linejoin="round"/>
-    ${OS.stations.map((s,i)=>{
-      const hw=num(s.hw),fw=num(s.fw),on=i===OS.active;
+    ${(()=>{const req=mandatoryIdx(OS.stations.length); return OS.stations.map((s,i)=>{
+      const hw=num(s.hw),fw=num(s.fw),on=i===OS.active,must=req.includes(i);
       const hb=hw!=null&&hw>OS.hwLimit, fb=fw!=null&&fw<OS.fwLimit;
+      const r=on?9:(must?8:6.5);
       return `${on?`<rect x="${X(i)-19}" y="${PY-6}" width="38" height="${H-PY*2-16}" fill="#FFC61A" opacity="0.09"/>`:''}
-        ${hw!=null?`<circle cx="${X(i)}" cy="${Y(hw)}" r="${on?9:6.5}" fill="${hb?'#E04A2F':'#5FB87A'}" stroke="#100E0A" stroke-width="2.5"/>`:''}
-        ${fw!=null?`<circle cx="${X(i)}" cy="${Y(fw)}" r="${on?9:6.5}" fill="${fb?'#E04A2F':'#5FB87A'}" stroke="#100E0A" stroke-width="2.5"/>`:''}
+        ${hw!=null?`<circle cx="${X(i)}" cy="${Y(hw)}" r="${r}" fill="${hb?'#E04A2F':'#5FB87A'}" stroke="#100E0A" stroke-width="2.5"/>`:''}
+        ${fw!=null?`<circle cx="${X(i)}" cy="${Y(fw)}" r="${r}" fill="${fb?'#E04A2F':'#5FB87A'}" stroke="#100E0A" stroke-width="2.5"/>`:''}
         <text x="${X(i)}" y="${H-8}" text-anchor="middle" font-size="13" font-family="monospace"
-          fill="${on?'#FFC61A':'#756C58'}" font-weight="${on?700:400}">${(i*OS.interval)}</text>`;
-    }).join('')}
+          fill="${on?'#FFC61A':must?'#F2ECDD':'#756C58'}"
+          font-weight="${on||must?700:400}">${stationDist(i)}${must?'*':''}</text>`;
+    }).join('');})()}
     <text x="${PL}" y="${H-8}" font-size="12" fill="#756C58" font-family="monospace"
       text-anchor="end" transform="translate(-14,0)">m</text>
   </svg>`;
@@ -1488,6 +1335,8 @@ function renderOffsets(main){
   const hb=hw!=null&&hw>OS.hwLimit, fb=fw!=null&&fw<OS.fwLimit;
   const bad=hb||fb;
   const saved=cache.offsetSet.filter(e=>e.shiftId===shift.id);
+  const missing=missingMandatory();
+  const mustNow=mandatoryIdx(OS.stations.length).includes(OS.active);
 
   main.innerHTML=`
   <div class="eyebrow">Stage 5 · at the face — core record</div>
@@ -1504,17 +1353,19 @@ function renderOffsets(main){
     <div class="check ${OS.downdipFirst?'on':''}" data-os="downdipFirst"><div class="box">✓</div>
       <div class="txt">Measuring from the down-dip side to the up-dip side<small>§9.8.iii</small></div></div>
     <div class="grid g3" style="margin-top:16px">
-      <div><label class="f">Station interval <span class="clause">open decision 12.1</span></label>
-        <div class="chips">
-          <button class="chip ${OS.interval===1?'sel':''}" data-iv="1">1 m · per sheet</button>
-          <button class="chip ${OS.interval===2?'sel':''}" data-iv="2">2 m · per §9.8.iv</button>
-        </div></div>
+      <div><label class="f">Traverse <span class="clause">applied · §9.8.ii–iv</span></label>
+        <input type="text" class="num"
+          value="${OS.stations.length} offsets · 1–${stationDist(OS.stations.length-1)} m" disabled></div>
       <div><label class="f">Heading type — sets the design cut</label>
         <select id="ht">${Object.entries(LIMITS).map(([k,v])=>
-          `<option value="${k}" ${OS.headingType===k?'selected':''}>${v.label} · ${v.hw.toFixed(2)} / ${v.fw.toFixed(2)}</option>`).join('')}</select></div>
-      <div><label class="f">Design cut width</label>
-        <input type="text" class="num" value="${S.planned.toFixed(2)} m" disabled></div>
+          `<option value="${k}" ${OS.headingType===k?'selected':''}>${v.label} · ${v.hw} / ${v.fw} cm</option>`).join('')}</select></div>
+      <div><label class="f">Design cut height</label>
+        <input type="text" class="num" value="${S.planned} cm" disabled></div>
     </div>
+    <p class="hint">Stations at 1 m, the first 1 m off the sidewall, no station zero —
+      ${OS.faceLength} m face, ${OS.stations.length} offsets. The
+      <b>${MANDATORY_M.join(' m and ')} m</b> readings are marked * and are required before save.
+      <span class="clause">applied over §9.8.iv · Chief Geologist, §7.3</span></p>
   </div>
 
   <div class="svgbox">${sectionSVG()}
@@ -1529,29 +1380,29 @@ function renderOffsets(main){
   <div class="grid g2" style="align-items:start">
     <div class="card ${bad?'hot':''}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px">
-        <div><div class="clause">STATION</div>
-          <div class="mononum" style="font-size:30px;font-weight:700">${OS.active*OS.interval} m</div></div>
+        <div><div class="clause">STATION${mustNow?' · REQUIRED':''}</div>
+          <div class="mononum" style="font-size:30px;font-weight:700">${stationDist(OS.active)} m</div></div>
         <div style="display:flex;gap:10px">
           <button class="btn ghost sm" id="prev" ${OS.active===0?'disabled':''} style="width:64px">◀</button>
           <button class="btn ghost sm" id="next" ${OS.active===OS.stations.length-1?'disabled':''} style="width:64px">▶</button>
         </div>
       </div>
       <button class="field ${OS.field==='hw'?'act':''} ${hb?'bad':''}" data-fld="hw">
-        <div class="fl"><span>BMSZ → hangingwall</span><span>limit ${OS.hwLimit.toFixed(2)}</span></div>
-        <div class="fv" style="color:${hw==null?'#3A3325':hb?'#E04A2F':'#F2ECDD'}">${cur.hw||'—.——'}</div>
-        <div class="fs" style="color:${hb?'#E04A2F':'#5FB87A'}">${hw==null?'':hb?('OVER-BREAK +'+(hw-OS.hwLimit).toFixed(2)+' m'):'WITHIN CUT'}</div>
+        <div class="fl"><span>BMSZ → hangingwall (cm)</span><span>limit ${OS.hwLimit}</span></div>
+        <div class="fv" style="color:${hw==null?'#3A3325':hb?'#E04A2F':'#F2ECDD'}">${cur.hw||'———'}</div>
+        <div class="fs" style="color:${hb?'#E04A2F':'#5FB87A'}">${hw==null?'':hb?('OVER-BREAK +'+(hw-OS.hwLimit)+' cm'):'WITHIN CUT'}</div>
       </button>
       <button class="field ${OS.field==='fw'?'act':''} ${fb?'bad':''}" data-fld="fw">
-        <div class="fl"><span>BMSZ → footwall</span><span>limit ${OS.fwLimit.toFixed(2)}</span></div>
-        <div class="fv" style="color:${fw==null?'#3A3325':fb?'#E04A2F':'#F2ECDD'}">${cur.fw||'—.——'}</div>
-        <div class="fs" style="color:${fb?'#E04A2F':'#5FB87A'}">${fw==null?'':fb?('OVER-BREAK +'+(OS.fwLimit-fw).toFixed(2)+' m'):'WITHIN CUT'}</div>
+        <div class="fl"><span>BMSZ → footwall (cm)</span><span>limit ${OS.fwLimit}</span></div>
+        <div class="fv" style="color:${fw==null?'#3A3325':fb?'#E04A2F':'#F2ECDD'}">${cur.fw||'———'}</div>
+        <div class="fs" style="color:${fb?'#E04A2F':'#5FB87A'}">${fw==null?'':fb?('OVER-BREAK +'+(OS.fwLimit-fw)+' cm'):'WITHIN CUT'}</div>
       </button>
       ${hw!=null&&fw!=null?`<div style="display:flex;gap:22px;padding:6px 4px;flex-wrap:wrap">
-        <div><div class="clause">STOPE WIDTH</div>
-          <div class="mononum" style="font-size:22px">${(hw-fw).toFixed(2)} m</div></div>
+        <div><div class="clause">MINING HEIGHT</div>
+          <div class="mononum" style="font-size:22px;color:${(hw-fw)>HEIGHT_FLAG_CM?'#E04A2F':'#F2ECDD'}">${hw-fw} cm</div></div>
         <div><div class="clause">VS DESIGN</div>
-          <div class="mononum" style="font-size:22px;color:${(hw-fw)-S.planned>0.01?'#E04A2F':'#5FB87A'}">
-            ${((hw-fw)-S.planned>=0?'+':'')+((hw-fw)-S.planned).toFixed(2)} m</div></div>
+          <div class="mononum" style="font-size:22px;color:${(hw-fw)-S.planned>0?'#E04A2F':'#5FB87A'}">
+            ${((hw-fw)-S.planned>=0?'+':'')+((hw-fw)-S.planned)} cm</div></div>
       </div>`:''}
       ${bad?`<div class="note stop" style="margin:14px 0 0"><span class="mk">!</span><div>
         <b>Cut exceeded at this station.</b> Record what caused it.${help(` This is the record that
@@ -1579,35 +1430,44 @@ function renderOffsets(main){
   <div class="stats">
     <div class="stat ${S.hwB?'hot':''}"><div class="num">${S.hwB}/${S.total}</div><div class="lbl">H/W over-break</div></div>
     <div class="stat ${S.fwB?'hot':''}"><div class="num">${S.fwB}/${S.total}</div><div class="lbl">F/W over-break</div></div>
-    <div class="stat ${S.hwB?'hot':''}"><div class="num">${S.hwB?S.meanOver.toFixed(2):'—'}</div><div class="lbl">Mean H/W excess (m)</div></div>
-    <div class="stat"><div class="num">${S.meanW!=null?S.meanW.toFixed(2):'—'}</div><div class="lbl">Mean stope width (m)</div></div>
-    <div class="stat ${S.dilution>5?'hot':''}"><div class="num">${S.dilution!=null?S.dilution.toFixed(0)+'%':'—'}</div><div class="lbl">Over design cut</div></div>
-    <div class="stat ${S.wasteT>0?'hot':''}"><div class="num">${S.wasteT!=null?S.wasteT.toFixed(0):'—'}</div><div class="lbl">Waste tonnes est.</div></div>
+    <div class="stat ${S.hwB?'hot':''}"><div class="num">${S.hwB?S.meanOver.toFixed(2):'—'}</div><div class="lbl">Mean H/W excess (cm)</div></div>
+    <div class="stat"><div class="num">${S.meanHW!=null?S.meanHW.toFixed(2):'—'}</div><div class="lbl">Mean H/W (cm)</div></div>
+    <div class="stat"><div class="num">${S.meanFW!=null?S.meanFW.toFixed(2):'—'}</div><div class="lbl">Mean F/W (cm)</div></div>
+    <div class="stat ${S.heightFlag?'hot':''}"><div class="num">${S.meanHeight!=null?S.meanHeight.toFixed(2):'—'}</div><div class="lbl">Mean mining height (cm)</div></div>
+    <div class="stat"><div class="num">${S.minHeight!=null?S.minHeight+'–'+S.maxHeight:'—'}</div><div class="lbl">Height range (cm)</div></div>
+    <div class="stat ${S.overCut>5?'hot':''}"><div class="num">${S.overCut!=null?S.overCut.toFixed(0)+'%':'—'}</div><div class="lbl">Over design cut</div></div>
   </div>
-  ${help(`<p class="hint" style="margin-top:-8px;margin-bottom:20px">
-    Waste estimate = mean excess width × face length ${OS.faceLength} m × advance ${OS.advance} m
-    × SG ${SG}. Indicative only — reconciliation is done by MRM.</p>`)}
+  ${S.heightFlag?`<div class="note warn" style="margin-bottom:20px"><span class="mk">◆</span><div>
+    <b>Mined above ${HEIGHT_FLAG_CM} cm.</b> At least one station on this face exceeds the flag
+    height. The face is marked on save and the management screen opens on it first.</div></div>`:''}
 
-  <button class="btn" id="saveOS" ${S.done===S.total?'':'disabled'}>
-    ${S.done===S.total?'Save blast offset record':`${S.total-S.done} station(s) still to measure`}</button>
+  <button class="btn" id="saveOS" ${S.done===S.total&&!missing.length?'':'disabled'}>
+    ${missing.length?`${missing.map(i=>stationDist(i)+' m').join(' and ')} required before save`
+      :S.done===S.total?'Save blast offset record'
+      :`${S.total-S.done} station(s) still to measure`}</button>
   <button class="btn ghost" id="loadNS3">Load worked example — NS3 12-07-10</button>
 
   ${saved.length?`<hr class="div"><h3 class="sec">Saved this shift</h3>${saved.map(e=>`
-    <div class="item ${e.stats.hwB?'hot':''}">
-      <div class="ih"><span class="it">Blast ${esc(e.blastNumber)} · ${e.stations.length} stations</span>
+    <div class="item ${e.stats.hwB||e.stats.heightFlag?'hot':''}">
+      <div class="ih"><span class="it">${esc(e.limitLabel)} · ${e.stations.length} offsets</span>
         <span class="ts">${fmtTS(e.ts)}</span></div>
       <div class="ib">Over-break <b>${e.stats.hwB} H/W · ${e.stats.fwB} F/W</b> ·
-        mean stope width <b>${e.stats.meanW!=null?e.stats.meanW.toFixed(2):'—'} m</b> against design
-        <b>${e.stats.planned.toFixed(2)} m</b>${e.stats.dilution!=null?' · <b>'+e.stats.dilution.toFixed(0)+'%</b> over cut':''}</div>
+        mean mining height <b>${e.stats.meanHeight!=null?e.stats.meanHeight.toFixed(2):'—'} cm</b>
+        against design <b>${e.stats.planned} cm</b>${e.stats.overCut!=null?' · <b>'+e.stats.overCut.toFixed(0)+'%</b> over cut':''}
+        ${e.stats.heightFlag?'<br><b style="color:var(--rust)">Mined above '+HEIGHT_FLAG_CM+' cm</b>':''}
+        ${e.bmszToOffsetSec!=null?'<br>BMSZ → offset <b>'+Math.round(e.bmszToOffsetSec/60)+' min</b>':''}
+        <br><span style="color:var(--faint)">Limits ${e.hwLimit} / ${e.fwLimit} cm · set ${esc(e.limitVersion)}</span></div>
       <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
     </div>`).join('')}`:''}`;
 
   main.querySelectorAll('[data-os]').forEach(el=>el.onclick=()=>{
     OS[el.dataset.os]=!OS[el.dataset.os]; render(); });
-  main.querySelectorAll('[data-iv]').forEach(b=>b.onclick=()=>{ rebuildStations(+b.dataset.iv); render(); });
   main.querySelector('#ht').onchange=e=>{
-    OS.headingType=e.target.value; OS.hwLimit=LIMITS[e.target.value].hw;
-    OS.fwLimit=LIMITS[e.target.value].fw; render(); };
+    /* Re-snapshot the whole applied set, not just the two numbers — a
+       record must never carry one set's limits under another's label. */
+    const k=e.target.value, l=LIMITS[k];
+    OS.headingType=k; OS.hwLimit=l.hw; OS.fwLimit=l.fw;
+    OS.limitLabel=l.label; OS.limitVersion=LIMIT_SET.version; render(); };
   main.querySelectorAll('[data-fld]').forEach(b=>b.onclick=()=>{ OS.field=b.dataset.fld; render(); });
   main.querySelector('#prev').onclick=()=>{ OS.active=Math.max(0,OS.active-1); OS.field='hw'; render(); };
   main.querySelector('#next').onclick=()=>{ OS.active=Math.min(OS.stations.length-1,OS.active+1); OS.field='hw'; render(); };
@@ -1626,27 +1486,47 @@ function renderOffsets(main){
     render();
   });
 
+  /* Face Marking Sheet NS3, 12-07-10 — a 7.2 m face against decline
+     limits, in centimetres. Six offsets at 1–6 m, per rework §2: the
+     sheet's original eight readings at 0–7 m included a station zero and
+     a reading hard against the up-dip sidewall, neither of which the
+     applied traverse collects. Verification figures, rework §8:
+     mean H/W 245.33 · mean F/W −134.5 · mean height 379.83 ·
+     range 376–383 · mean over-break 95.33 · to management 3.80 m. */
   main.querySelector('#loadNS3').onclick=()=>{
-    OS.headingType='decline'; OS.hwLimit=1.50; OS.fwLimit=-1.00;
-    OS.faceLength=7.2; OS.advance=2.1; OS.interval=1; OS.blastNumber='09';
-    const hw=[2.45,2.47,2.51,2.43,2.42,2.44,2.46,2.43];
-    const fw=[-1.32,-1.34,-1.32,-1.37,-1.34,-1.38,-1.37,-1.36];
-    OS.stations=hw.map((h,i)=>({hw:String(h),fw:String(fw[i]),cause:'',note:''}));
+    const l=LIMITS.decline;
+    OS.headingType='decline'; OS.hwLimit=l.hw; OS.fwLimit=l.fw;
+    OS.limitLabel=l.label; OS.limitVersion=LIMIT_SET.version;
+    OS.faceLength=7.2; OS.interval=STATION_INTERVAL_M;
+    const hw=[245,247,251,243,242,244];
+    const fw=[-132,-134,-132,-137,-134,-138];
+    OS.stations=hw.map((h,i)=>({hw:String(h),fw:String(fw[i]),
+      cause:'Over-charging / excess explosive',note:''}));
     OS.active=0; OS.field='hw'; OS.tapeTaut=true; OS.downdipFirst=true;
-    render(); flash('NS3 12-07-10 loaded — every station over the cut');
+    render(); flash('NS3 12-07-10 loaded — 6 offsets, every station over the cut');
   };
 
   main.querySelector('#saveOS').onclick=async()=>{
     if(!OS.tapeTaut||!OS.downdipFirst){ flash('Confirm tape set-up and direction first',true); return; }
+    /* Re-checked here, not only on the button. */
+    const need=missingMandatory();
+    if(need.length){
+      flash(need.map(i=>stationDist(i)+' m').join(' and ')+' must be read before save',true); return; }
     const miss=OS.stations.some((s,i)=>{
       const h=num(s.hw),f=num(s.fw);
       return ((h!=null&&h>OS.hwLimit)||(f!=null&&f<OS.fwLimit)) && !s.cause; });
     if(miss){ flash('Every over-break station needs a cause',true); return; }
-    await saveEntry('offsetSet',{blastNumber:OS.blastNumber, headingType:OS.headingType,
-      interval:OS.interval, faceLength:OS.faceLength, advance:OS.advance,
+    /* REWORK §4 — how long the face took to walk, BMSZ mark to offsets. */
+    const bz=shift.bmszAt?Math.round((Date.now()-new Date(shift.bmszAt).getTime())/1000):null;
+    await saveEntry('offsetSet',{headingType:OS.headingType,
+      unit:'cm',
+      interval:OS.interval, faceLength:OS.faceLength,
       hwLimit:OS.hwLimit, fwLimit:OS.fwLimit,
-      stations:OS.stations.map((s,i)=>({dist:i*OS.interval, hw:num(s.hw), fw:num(s.fw),
-        width:(num(s.hw)!=null&&num(s.fw)!=null)?+(num(s.hw)-num(s.fw)).toFixed(2):null,
+      limitVersion:OS.limitVersion, limitLabel:OS.limitLabel,
+      bmszToOffsetSec:bz,
+      stations:OS.stations.map((s,i)=>({dist:stationDist(i), hw:num(s.hw), fw:num(s.fw),
+        height:(num(s.hw)!=null&&num(s.fw)!=null)?num(s.hw)-num(s.fw):null,
+        mandatory:mandatoryIdx(OS.stations.length).includes(i),
         cause:s.cause})),
       stats:osStats()});
     OS=newOffsetSet(); render();
@@ -1720,92 +1600,6 @@ function renderStructure(main){
     render();
   };
 }
-/* ═══ 16 · HAZARD — SOS ═══════════════════════════════════════════════
-   Floating, always reachable, on every screen including locked ones.
-   This app does NOT replace the mine's formal hazard reporting system —
-   it records the observation and prompts the technician to report it
-   through the existing channel. */
-
-function renderSOS(){
-  const old=document.getElementById('scrim'); if(old) old.remove();
-  if(!sosOpen) return;
-  const d=document.createElement('div');
-  d.className='scrim'; d.id='scrim';
-  d.innerHTML=`<div class="sheet">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <h2 class="title" style="color:var(--rust)">Hazard</h2>
-      <button class="btn ghost sm" id="hzClose">Close</button>
-    </div>
-    <p class="sub" style="margin-bottom:18px">Record it here, then report it through the mine's
-      formal hazard channel. This app does not replace that system.</p>
-
-    <div class="note stop"><span class="mk">!</span><div>
-      If there is immediate danger, <b>leave the workplace and alert the miner in charge first</b>.
-      Record it afterwards.</div></div>
-
-    <label class="f">Hazard type</label>
-    <div class="chips" id="hzT">${HAZ_TYPES.map(h=>
-      `<button class="chip" data-v="${esc(h)}" style="height:auto;padding:12px 15px;font-size:14.5px">${esc(h)}</button>`).join('')}</div>
-
-    <label class="f" style="margin-top:18px">Severity</label>
-    <div class="chips" id="hzS">
-      <button class="chip" data-v="High">High — stop work</button>
-      <button class="chip" data-v="Medium">Medium</button>
-      <button class="chip" data-v="Low">Low</button>
-    </div>
-
-    <label class="f" style="margin-top:18px" for="hzD">What did you see?</label>
-    <textarea id="hzD" placeholder="Location in the end, extent, what changed"></textarea>
-
-    <label class="f" for="hzA">Immediate action taken</label>
-    <input type="text" id="hzA" placeholder="Barricaded, withdrew, made safe, none">
-
-    <label class="f" for="hzN">Person or team notified</label>
-    <input type="text" id="hzN" value="${esc(shift&&shift.accessBy||'')}" placeholder="Miner / Shift Boss name">
-
-    <button class="btn danger" id="hzSave">Record hazard</button>
-  </div>`;
-  document.body.appendChild(d);
-
-  let t='',s='';
-  d.querySelectorAll('#hzT .chip').forEach(b=>b.onclick=()=>{
-    d.querySelectorAll('#hzT .chip').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel'); t=b.dataset.v; });
-  d.querySelectorAll('#hzS .chip').forEach(b=>b.onclick=()=>{
-    d.querySelectorAll('#hzS .chip').forEach(x=>{x.classList.remove('sel');x.classList.remove('rust');});
-    b.classList.add('sel'); if(b.dataset.v==='High') b.classList.add('rust'); s=b.dataset.v; });
-  d.querySelector('#hzClose').onclick=()=>{ sosOpen=false; renderSOS(); };
-  d.onclick=e=>{ if(e.target===d){ sosOpen=false; renderSOS(); } };
-  d.querySelector('#hzSave').onclick=async()=>{
-    if(!t||!s){ flash('Type and severity required',true); return; }
-    await saveEntry('hazard',{hazardType:t, severity:s,
-      description:d.querySelector('#hzD').value, action:d.querySelector('#hzA').value,
-      notified:d.querySelector('#hzN').value, status:'Open'});
-    sosOpen=false; renderSOS(); render();
-    flash('Hazard recorded — now report it through the mine channel');
-  };
-}
-
-function renderHazardList(main){
-  const all=cache.hazard;
-  main.innerHTML=`
-  <h2 class="title">Hazards</h2>
-  <p class="sub">Recorded observations. The formal report still goes through the mine's own
-    hazard reporting system. <span class="clause">Brief §17, §50</span></p>
-  <button class="btn danger" id="newHaz">Record a hazard</button>
-  <hr class="div">
-  ${all.length?all.map(e=>`<div class="item ${e.severity==='High'?'hot':''}">
-    <div class="ih"><span class="it" style="color:${e.severity==='High'?'var(--rust)':'var(--paint)'}">${esc(e.hazardType)}</span>
-      <span class="ts">${fmtTS(e.ts)}</span></div>
-    <div class="ib"><b>${esc(e.severity)}</b> severity · status <b>${esc(e.status)}</b><br>
-      ${esc(e.description)||''}${e.action?'<br>Action: <b>'+esc(e.action)+'</b>':''}
-      ${e.notified?'<br>Notified: <b>'+esc(e.notified)+'</b>':''}<br>
-      <span style="color:var(--faint)">${esc(e.place?e.place.bord:'—')} · ${esc(e.by)}</span></div>
-    <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
-  </div>`).join(''):'<div class="empty">No hazards recorded</div>'}`;
-  main.querySelector('#newHaz').onclick=()=>{ sosOpen=true; renderSOS(); };
-}
-
 /* ═══ 17 · NOTES ══════════════════════════════════════════════════════ */
 
 function renderNote(main){
@@ -1833,13 +1627,68 @@ function renderNote(main){
   };
 }
 
-/* ═══ 18 · REPORTS ════════════════════════════════════════════════════ */
+/* ═══ 18 · MANAGEMENT AND REPORTS ═════════════════════════════════════
+
+   REWORK §6 — the dashboard is two screens, Management and Reports.
+   Overview, search, the review queue, conflicts, the audit trail and
+   administration are not reachable from the interface.
+
+   REWORK §1 — these two screens are the ONLY places a figure is
+   converted to metres, and both do it through toM(). Everything the
+   technician sees stays in centimetres.
+
+   NOTE, rework §7: in that build a server recomputes every aggregate at
+   ingest and ignores the handset's own breach counts and means. This
+   build has no server — syncNow() is still a local stub — so the
+   figures below are the device's own, recomputed by osStats() at save.
+   Nothing here is a compliance figure until a server re-derives it.   */
+
+/* Faces mined above the flag height come first — rework §3. */
+function faceRows(){
+  const os=cache.offsetSet.filter(e=>e.shiftId===shift.id);
+  return os.slice().sort((a,b)=>
+    (b.stats.heightFlag?1:0)-(a.stats.heightFlag?1:0) ||
+    new Date(b.ts)-new Date(a.ts));
+}
+
+function renderManagement(main){
+  const rows=faceRows();
+  const flagged=rows.filter(e=>e.stats.heightFlag);
+  main.innerHTML=`
+  <h2 class="title">Management</h2>
+  <p class="sub">Mining height against design cut, in metres.
+    <span class="clause">§9.8.vii · figures leaving geology</span></p>
+
+  <div class="stats">
+    <div class="stat ${flagged.length?'hot':''}"><div class="num">${flagged.length}</div>
+      <div class="lbl">Above ${toM(HEIGHT_FLAG_CM).toFixed(2)} m</div></div>
+    <div class="stat"><div class="num">${rows.length}</div><div class="lbl">Faces measured</div></div>
+    <div class="stat ${pending()?'hot':''}"><div class="num">${pending()}</div><div class="lbl">Awaiting sync</div></div>
+  </div>
+
+  ${rows.length?`<div class="tblwrap"><table>
+    <thead><tr><th>Face</th><th>Offsets</th><th>Mean height m</th><th>Design m</th>
+      <th>Over cut</th><th>Over-break</th><th>Status</th></tr></thead>
+    <tbody>${rows.map(e=>{
+      const mh=e.stats.meanHeight;
+      return `<tr class="${e.stats.heightFlag?'breach':''}">
+        <td>${esc(e.place?e.place.bord:'—')}</td>
+        <td class="n">${e.stations.length}</td>
+        <td class="n" style="color:${e.stats.heightFlag?'var(--rust)':'inherit'}">
+          ${mh!=null?toM(mh).toFixed(2):'—'}</td>
+        <td class="n">${toM(e.stats.planned).toFixed(2)}</td>
+        <td class="n">${e.stats.overCut!=null?e.stats.overCut.toFixed(0)+'%':'—'}</td>
+        <td class="n">${e.stats.hwB} / ${e.stats.fwB}</td>
+        <td style="color:${e.stats.heightFlag?'var(--rust)':'var(--grow)'};font-family:var(--mono);font-size:13px">
+          ${e.stats.heightFlag?'ABOVE FLAG':'WITHIN FLAG'}</td></tr>`;}).join('')}</tbody>
+  </table></div>`:'<div class="empty">No offset records this shift</div>'}`;
+}
 
 function renderReports(main){
   const g=gates();
-  const os=cache.offsetSet.filter(e=>e.shiftId===shift.id);
+  const os=faceRows();
   main.innerHTML=`
-  <h2 class="title">Shift report</h2>
+  <h2 class="title">Width control report</h2>
   ${help(`<p class="sub">Daily BMSZ Marking Summary and Stope Sheet, assembled from what you captured.
     <span class="clause">STD-201 §9.7</span></p>`)}
 
@@ -1847,30 +1696,36 @@ function renderReports(main){
     <div class="stat"><div class="num">${g.counts.logs}</div><div class="lbl">Face logs</div></div>
     <div class="stat"><div class="num">${g.counts.marks}</div><div class="lbl">BMSZ markings</div></div>
     <div class="stat"><div class="num">${g.counts.offs}</div><div class="lbl">Offset records</div></div>
-    <div class="stat ${cache.hazard.length?'hot':''}"><div class="num">${cache.hazard.length}</div><div class="lbl">Hazards</div></div>
     <div class="stat"><div class="num">${cache.structure.filter(e=>e.shiftId===shift.id).length}</div><div class="lbl">Structures</div></div>
     <div class="stat ${pending()?'hot':''}"><div class="num">${pending()}</div><div class="lbl">Awaiting sync</div></div>
   </div>
 
-  ${os.map(e=>`<h3 class="sec">Blast ${esc(e.blastNumber)} · ${esc(e.headingType)} · design cut ${e.stats.planned.toFixed(2)} m</h3>
+  ${os.map(e=>`<h3 class="sec">${esc(e.limitLabel)} · design cut ${e.stats.planned} cm
+      ${e.stats.heightFlag?'· <span style="color:var(--rust)">above '+HEIGHT_FLAG_CM+' cm</span>':''}</h3>
     <div class="tblwrap"><table>
-      <thead><tr><th>Dist m</th><th>H/W</th><th>F/W</th><th>Stope width</th><th>Vs design</th><th>Status</th><th>Cause</th></tr></thead>
+      <thead><tr><th>Dist m</th><th>H/W cm</th><th>F/W cm</th><th>Mining height cm</th>
+        <th>Vs design</th><th>Status</th><th>Cause</th></tr></thead>
       <tbody>${e.stations.map(s=>{
         const hb=s.hw!=null&&s.hw>e.hwLimit, fb=s.fw!=null&&s.fw<e.fwLimit;
-        const d=s.width!=null?s.width-e.stats.planned:null;
+        const d=s.height!=null?s.height-e.stats.planned:null;
         return `<tr class="${hb||fb?'breach':''}">
-          <td class="n">${s.dist}</td><td class="n" style="color:${hb?'var(--rust)':'inherit'}">${s.hw??'—'}</td>
+          <td class="n">${s.dist}${s.mandatory?'*':''}</td>
+          <td class="n" style="color:${hb?'var(--rust)':'inherit'}">${s.hw??'—'}</td>
           <td class="n" style="color:${fb?'var(--rust)':'inherit'}">${s.fw??'—'}</td>
-          <td class="n">${s.width??'—'}</td>
-          <td class="n" style="color:${d>0.01?'var(--rust)':'var(--grow)'}">${d!=null?(d>=0?'+':'')+d.toFixed(2):'—'}</td>
+          <td class="n" style="color:${s.height>HEIGHT_FLAG_CM?'var(--rust)':'inherit'}">${s.height??'—'}</td>
+          <td class="n" style="color:${d>0?'var(--rust)':'var(--grow)'}">${d!=null?(d>=0?'+':'')+d:'—'}</td>
           <td style="color:${hb||fb?'var(--rust)':'var(--grow)'};font-family:var(--mono);font-size:13px">
             ${hb||fb?'OVER-BREAK':'WITHIN CUT'}</td>
           <td style="font-size:14px">${esc(s.cause)||''}</td></tr>`;}).join('')}</tbody>
     </table></div>
-    <p class="hint" style="margin-bottom:22px">Mean stope width <b>${e.stats.meanW!=null?e.stats.meanW.toFixed(2):'—'} m</b>
-      against design <b>${e.stats.planned.toFixed(2)} m</b>
-      ${e.stats.dilution!=null?' — <b style="color:var(--rust)">'+e.stats.dilution.toFixed(0)+'% over cut</b>':''}.
-      Estimated waste ${e.stats.wasteT!=null?e.stats.wasteT.toFixed(0)+' t':'—'}.</p>`).join('')
+    <p class="hint" style="margin-bottom:22px">Mean H/W <b>${e.stats.meanHW!=null?e.stats.meanHW.toFixed(2):'—'} cm</b> ·
+      mean F/W <b>${e.stats.meanFW!=null?e.stats.meanFW.toFixed(2):'—'} cm</b> ·
+      mean mining height <b>${e.stats.meanHeight!=null?e.stats.meanHeight.toFixed(2):'—'} cm</b>
+      ${e.stats.minHeight!=null?'(range '+e.stats.minHeight+'–'+e.stats.maxHeight+')':''}
+      against design <b>${e.stats.planned} cm</b>
+      ${e.stats.overCut!=null?' — <b style="color:var(--rust)">'+e.stats.overCut.toFixed(0)+'% over cut</b>':''}.<br>
+      To management: <b>${e.stats.meanHeight!=null?toM(e.stats.meanHeight).toFixed(2):'—'} m</b>.
+      Limits ${e.hwLimit} / ${e.fwLimit} cm, set ${esc(e.limitVersion)}.</p>`).join('')
     || '<div class="empty">No offset records this shift</div>'}
 
   <button class="btn teal" id="sync">Sync to MRM system now</button>
@@ -1897,7 +1752,7 @@ function renderSignout(main){
   const s=shift, g=gates();
   const done=SIGNOUT.filter(x=>s.signout[x[0]]===true).length;
   main.innerHTML=`
-  <div class="eyebrow">Stage 6 · surface</div>
+  <div class="eyebrow">Stage 4 · surface</div>
   <h2 class="title">Sign out</h2>
   ${help(`<p class="sub">Close the shift. The record cannot be closed until the statutory books are
     updated. <span class="clause">STD-201 §8.2.2, §8.3.3, §9.2, §9.6.2, §9.6.3, §9.7</span></p>`)}
@@ -1962,10 +1817,11 @@ function renderSignout(main){
   btn.onclick=async()=>{
     s.endedAt=nowTS();
     await saveEntry('shift',{summary:{logs:g.counts.logs,marks:g.counts.marks,offsets:g.counts.offs,
-      hazards:cache.hazard.length}, signout:s.signout, deviation:s.deviation,
-      team:s.team, startedAt:s.startedAt, endedAt:s.endedAt, shiftName:s.shiftName});
+      structures:cache.structure.filter(e=>e.shiftId===s.id).length},
+      signout:s.signout, deviation:s.deviation,
+      startedAt:s.startedAt, endedAt:s.endedAt, shiftName:s.shiftName});
     await put('shift:current',null); await put('place',null);
-    shift=null; place=null; OS=null; stage='login'; session=null; await put('session',null);
+    shift=null; place=null; OS=null; FL=null; stage='login'; session=null; await put('session',null);
     renderShell(); flash('Shift closed and signed out');
   };
 }
@@ -1975,41 +1831,34 @@ function renderSignout(main){
 function renderDash(main){
   const g=gates();
   const mods=[
-    ['preshift','Pre-shift','SHE · tools · register',true, g.pre==='done'?'✓':'open'],
-    ['team','Team engagement','Workmates · PPE',true, shift.team.length||'—'],
-    ['access','Workplace access','Permission · certification',unlocked('access'), g.access==='done'?'✓':'open'],
-    ['facelog','Face log','Peg · advance · dimensions',unlocked('facelog'), g.counts.logs],
+    ['facelog','Face log','Peg · channel · area made safe',unlocked('facelog'), g.counts.logs],
     ['bmsz','BMSZ marking','Visual · XRF · line',unlocked('bmsz'), g.counts.marks],
-    ['offsets','Blast offsets','Over-break vs design cut',unlocked('offsets'), g.counts.offs],
+    ['offsets','Blast offsets','Over-break vs design cut, cm',unlocked('offsets'), g.counts.offs],
     ['structure','Structures','Within 3 m of face',unlocked('structure'), cache.structure.filter(e=>e.shiftId===shift.id).length],
-    ['hazard','Hazards','Observations',true, cache.hazard.length],
-    ['reports','Shift report','Summary · sync',true, pending()],
+    ['management','Management','Mining height, metres',true, faceRows().filter(e=>e.stats.heightFlag).length||'—'],
+    ['reports','Width control report','Summary · sync',true, pending()],
     ['signout','Sign out','Close the shift',unlocked('signout'), g.out==='open'?'ready':'locked'],
   ];
   main.innerHTML=`
   <div class="eyebrow">${esc(session.role)} · ${esc(shift.shiftName)} shift</div>
   <h2 class="title">${esc(session.name.split('.').pop().trim())}</h2>
-  <p class="sub">${place?`Working <b>${esc(place.bord)}</b>, ${esc(place.level)}, blast
-    <b>${esc(place.blastNumber)}</b>. Cleared for re-entry by ${esc(place.clearedBy)}.`
+  <p class="sub">${place?`Working <b>${esc(place.bord)}</b>, ${esc(place.level)}.
+    Cleared for re-entry by ${esc(place.clearedBy)}.`
     :'No workplace selected.'}</p>
 
   <div class="gates">
-    <div class="gate ${g.pre}"><div class="gn">1 · Pre-shift</div>
-      <div class="gs">${g.pre==='done'?'Complete':'Outstanding'}</div></div>
-    <div class="gate ${g.access}"><div class="gn">2 · Access</div>
-      <div class="gs">${g.access==='done'?'Certified':g.access==='open'?'Outstanding':'Locked'}</div></div>
-    <div class="gate ${g.capture}"><div class="gn">3 · Capture</div>
+    <div class="gate ${g.log}"><div class="gn">1 · Face log</div>
+      <div class="gs">${g.log==='done'?'Recorded':'Outstanding'}</div></div>
+    <div class="gate ${g.capture}"><div class="gn">2 · Capture</div>
       <div class="gs">${g.capture==='shut'?'Locked':g.capture==='done'?'Complete':'In progress'}</div></div>
-    <div class="gate ${g.out==='open'?'open':'shut'}"><div class="gn">4 · Sign out</div>
+    <div class="gate ${g.out==='open'?'open':'shut'}"><div class="gn">3 · Sign out</div>
       <div class="gs">${g.out==='open'?'Ready':'Locked'}</div></div>
   </div>
 
-  ${g.pre!=='done'?`<div class="note warn"><span class="mk">◆</span><div>
-    Pre-shift preparation is not complete. Face log, marking and offsets stay locked until the
-    SHE record, tools inspection and underground register are done.</div></div>`:''}
-  ${g.access!=='done'&&g.pre==='done'?`<div class="note warn"><span class="mk">◆</span><div>
-    Workplace access has not been certified. Complete the access record at the end before
-    logging anything.</div></div>`:''}
+  ${g.log!=='done'?`<div class="note warn"><span class="mk">◆</span><div>
+    No face log yet. BMSZ marking, offsets and structures stay locked until one is recorded —
+    and it cannot be recorded until the overseer has declared the area made safe and been
+    named.</div></div>`:''}
 
   <div class="mods">${mods.map(([v,n,d,ok,c])=>`
     <button class="mod ${ok?'':'locked'}" data-go="${v}">
@@ -2026,9 +1875,9 @@ function renderDash(main){
 /* ═══ 21 · SHELL ══════════════════════════════════════════════════════ */
 
 const NAV = [
-  ['dash','Home'],['preshift','Pre-shift'],['team','Team'],['access','Access'],
+  ['dash','Home'],
   ['facelog','Face log'],['bmsz','BMSZ'],['offsets','Offsets'],['structure','Structures'],
-  ['hazard','Hazards'],['note','Notes'],['reports','Report'],['signout','Sign out'],
+  ['note','Notes'],['management','Management'],['reports','Report'],['signout','Sign out'],
 ];
 
 function renderAppShell(app){
@@ -2071,15 +1920,13 @@ function renderAppShell(app){
       <main id="main"></main>
     </div>
   </div>
-  <button class="sos" id="sos" aria-label="Record a hazard">
-    <span class="g">⚠</span><span>SOS</span></button>`;
+  `;
 
   app.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{
     const v=b.dataset.nav;
     if(!unlocked(v)){ flash('Locked — complete the previous stage',true); return; }
     setView(v);
   });
-  document.getElementById('sos').onclick=()=>{ sosOpen=true; renderSOS(); };
   document.getElementById('chg').onclick=()=>{ stage='reentry'; renderShell(); };
   clearInterval(window._clk); window._clk=setInterval(tick,20000); tick();
   render();
@@ -2111,9 +1958,9 @@ function refreshNav(){
 }
 function render(){
   const main=document.getElementById('main'); if(!main) return;
-  const R={dash:renderDash, preshift:renderPreshift, team:renderTeam, access:renderAccess,
+  const R={dash:renderDash,
     facelog:renderFaceLog, bmsz:renderBmsz, offsets:renderOffsets, structure:renderStructure,
-    hazard:renderHazardList, note:renderNote, reports:renderReports, signout:renderSignout};
+    note:renderNote, management:renderManagement, reports:renderReports, signout:renderSignout};
   if(!unlocked(VIEW)) VIEW='dash';
   (R[VIEW]||renderDash)(main);
   refreshNav();
