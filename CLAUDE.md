@@ -145,6 +145,41 @@ admin. GeoTech adds:
 These need an RLS migration on the shared project. Apply it before
 shipping anything that writes with these roles.
 
+### Accounts and sign-in
+
+The pick-a-name-and-any-4-digit-PIN login is gone. People create an
+account (name, employee number, section, role, password) and sign in
+with employee number + password.
+
+- Passwords are never stored. Each account keeps a random 16-byte salt
+  and a **PBKDF2-SHA-256** derivation at **210,000 iterations**;
+  sign-in re-derives and compares in **constant time**.
+- **Auth fails closed.** If `crypto.subtle` is missing the app refuses
+  to create or check a password. Never add a weaker fallback — a cheap
+  hash is worse than a refusal, because a refusal gets noticed.
+- 5 failed attempts locks the account for 15 minutes, and the lockout
+  holds against the correct password too.
+- One message covers "no such account" and "wrong password". Telling
+  them apart enumerates who works here.
+- Sessions carry an expiry of one shift (12 h). An expired session is
+  dropped at boot; captured work is untouched and still syncs.
+
+**Accounts are per-device and are NOT the enforcement boundary.** RLS
+is. A signed-in role in `index.html` never authorises reading another
+section's data. Role at registration is **self-declared** and stored as
+`roleSource:'self-declared'` — it grants nothing, and §7.3 deviation
+authorisation still belongs to the Chief Geologist.
+
+Four functions are the whole Supabase seam. Replace their bodies and
+nothing else in the file moves:
+
+| Function | Becomes |
+|---|---|
+| `findAccount()` | a profiles read |
+| `createAccount()` | `auth.signUp` |
+| `authenticate()` | `auth.signInWithPassword` |
+| `newSession()` | the session auth returns |
+
 ## The offset module — read this before changing it
 
 "Offset" in this app means **deviation of the blasted profile from the
@@ -270,6 +305,25 @@ Opened by the rework, all recorded rather than guessed at:
 17. **Reference terminology.** Reef names and structure types are seeded
     placeholders, flagged in code. Not official Unki codes — replace
     before production use.
+
+Opened by the sign-in rework:
+
+18. **Should accounts be self-serve at all?** Anyone can currently
+    register and type their own name, employee number and role, and
+    every record they then create is signed with it (§9.1). The mine
+    may want accounts provisioned by MRM instead, with the person only
+    setting a password. Built self-serve because that is what was
+    asked; one function changes it.
+19. **Role provisioning.** Self-declared today and recorded as such.
+    Comes from the RLS migration in production — decide who grants
+    `chief_geologist` and how.
+20. **Password policy.** 10 characters minimum, no composition rules,
+    5 attempts then a 15-minute lockout. DERIVED — no Unki policy was
+    supplied. Confirm against the mine's IT standard.
+21. **Session length.** 12 h, chosen to match a shift. Confirm.
+22. **Account recovery.** There is none. A technician who forgets a
+    password underground cannot sign in and cannot capture. Needs a
+    ruling before production — this is the one that will bite first.
 
 ## When making changes
 

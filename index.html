@@ -282,13 +282,6 @@ td.n{font-family:var(--mono);}
   text-transform:uppercase;line-height:1;}
 .brandbig .b2{font-family:var(--mono);font-size:14px;color:var(--faint);letter-spacing:.14em;
   margin-top:10px;text-transform:uppercase;}
-.pick{display:flex;justify-content:space-between;align-items:center;gap:14px;
-  padding:0 18px;min-height:var(--tap-lg);border:1.5px solid var(--line);border-radius:9px;
-  margin-bottom:11px;background:var(--sunk);width:100%;text-align:left;color:var(--text);}
-.pick:active{background:var(--raised);}
-.pick.sel{border-color:var(--paint);background:var(--paint-dim);}
-.pick b{font-family:var(--mono);font-size:16px;font-weight:600;}
-.pick span{font-family:var(--mono);font-size:13px;color:var(--faint);}
 
 /* ── re-entry board ───────────────────────────────────────── */
 .rec{border:1.5px solid var(--line);border-left:5px solid var(--faint);border-radius:9px;
@@ -366,15 +359,16 @@ let session = null;        // {name, role, employeeNo, section}
 let place   = null;        // selected workplace, hydrated from re-entry feed
 let shift   = null;        // active shift record with all gate states
 
-/* ═══ 1 · PEOPLE ══════════════════════════════════════════════════════ */
+/* ═══ 1 · PEOPLE ══════════════════════════════════════════════════════
 
-const USERS = [
-  {name:'T. Chidindi',   employeeNo:'UK-4471', role:'Geological Technician', section:'North Section'},
-  {name:'R. Mahove',     employeeNo:'UK-3902', role:'Geological Technician', section:'South Section'},
-  {name:'O. Mapengo',    employeeNo:'UK-2210', role:'Section Geologist',     section:'North Section'},
-  {name:'O. Mandingaisa',employeeNo:'UK-1004', role:'Chief Geologist',       section:'MRM'},
-  {name:'C. Musa',       employeeNo:'UK-0881', role:'MRM Manager',           section:'MRM'},
-];
+   There is no hardcoded user list any more. People create accounts and
+   sign in — see §7. What stays here is the role model: what a role is
+   allowed to do, which is a statement about the standard, not about any
+   particular person.
+
+   This table is NOT the enforcement boundary. RLS on the shared project
+   is. Never grant a read here that RLS would refuse.                  */
+
 const CAN = {
   'Geological Technician':{capture:true, authoriseDeviation:false, review:false},
   'Section Geologist':    {capture:true, authoriseDeviation:false, review:true},
@@ -690,51 +684,286 @@ const unlocked = v => {
   return true;
 };
 
-/* ═══ 7 · LOGIN ═══════════════════════════════════════════════════════ */
+/* ═══ 7 · ACCOUNTS AND AUTHENTICATION ═════════════════════════════════
 
-function renderLogin(app){
+   Replaces the pick-a-name-and-type-any-PIN prototype login. Every
+   record carries the observer who made it and cannot be edited
+   afterwards (§9.1), so who is signed in has to mean something.
+
+   Passwords are never stored. Each account keeps a random per-account
+   salt and a PBKDF2-SHA-256 derivation of the password, and sign-in
+   re-derives and compares in constant time.
+
+   IF crypto.subtle IS MISSING, AUTHENTICATION FAILS CLOSED. There is no
+   weaker fallback path — a hash that is cheap to reverse is worse than
+   an app that will not sign you in, because the second one you notice.
+
+   ── WHERE SUPABASE GOES ────────────────────────────────────────────
+   The mine's accounts belong in the shared Supabase project with the
+   roles from the RLS migration, exactly as CLAUDE.md says. Nothing in
+   this repo has credentials for it, so accounts live in the device
+   store for now. Four functions are the whole seam — replace their
+   bodies with supabase.auth calls and nothing else in this file moves:
+
+     findAccount()    → auth.admin / a profiles read
+     createAccount()  → auth.signUp
+     authenticate()   → auth.signInWithPassword
+     newSession()     → the session auth returns
+
+   Until that happens: accounts are per-device, they do not sync, and
+   they are NOT the enforcement boundary. RLS is. Never treat a signed-in
+   role in this file as permission to read another section's data.
+   ═══════════════════════════════════════════════════════════════════ */
+
+const AUTH = {
+  ALGO:       'PBKDF2-SHA256',
+  ITERATIONS: 210000,   // OWASP floor for PBKDF2-HMAC-SHA256
+  SALT_BYTES: 16,
+  KEY_BITS:   256,
+  MIN_PW:     10,
+  MAX_TRIES:  5,
+  LOCKOUT_MS: 15*60*1000,
+  SESSION_MS: 12*60*60*1000,   // one shift; re-authenticate after
+};
+
+/* Sections are exactly these — same as SLAM. Never invent another. */
+const SECTIONS = ['14 South','16 North'];
+const ROLES = Object.keys(CAN);
+
+const cryptoOK = () => !!(window.crypto && window.crypto.subtle &&
+                          typeof window.crypto.subtle.deriveBits==='function' &&
+                          window.crypto.getRandomValues);
+
+const b64   = bytes => btoa(String.fromCharCode.apply(null, Array.from(bytes)));
+const unb64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+const normNo = s => String(s||'').trim().toUpperCase();
+
+async function derive(password, salt, iterations){
+  const base = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    {name:'PBKDF2', salt, iterations, hash:'SHA-256'}, base, AUTH.KEY_BITS);
+  return new Uint8Array(bits);
+}
+
+/* Constant time. Never leak how much of a hash matched. */
+function sameBytes(a,b){
+  if(a.length!==b.length) return false;
+  let diff=0;
+  for(let i=0;i<a.length;i++) diff |= a[i]^b[i];
+  return diff===0;
+}
+
+/* ── the Supabase seam ───────────────────────────────────────────── */
+
+async function accountIndex(){ return (await get('accounts:index')) || []; }
+
+async function findAccount(employeeNo){
+  const no = normNo(employeeNo);
+  if(!no) return null;
+  return await get('account:'+no);
+}
+
+async function createAccount({name, employeeNo, role, section, password}){
+  if(!cryptoOK()) throw new Error('This browser cannot hash passwords securely.');
+  const no = normNo(employeeNo);
+  if(await findAccount(no)) throw new Error('That employee number already has an account.');
+  const salt = crypto.getRandomValues(new Uint8Array(AUTH.SALT_BYTES));
+  const hash = await derive(password, salt, AUTH.ITERATIONS);
+  const acct = {
+    employeeNo:no, name:name.trim(), role, section,
+    algo:AUTH.ALGO, iterations:AUTH.ITERATIONS,
+    salt:b64(salt), hash:b64(hash),
+    /* Role is self-declared on this form. In production it comes from
+       the RLS migration, not from whoever filled the form in. Recorded
+       so a reviewer can tell the two apart. */
+    roleSource:'self-declared',
+    createdAt:nowTS(), failed:0, lockedUntil:null,
+  };
+  await put('account:'+no, acct);
+  const idx = await accountIndex();
+  if(!idx.includes(no)) await put('accounts:index', idx.concat([no]));
+  return acct;
+}
+
+/* Returns {ok, account} or {ok:false, reason}. The caller shows one
+   message for "no such account" and "wrong password" alike — telling
+   the two apart just enumerates who works here. */
+async function authenticate(employeeNo, password){
+  if(!cryptoOK()) return {ok:false, reason:'nocrypto'};
+  const acct = await findAccount(employeeNo);
+  if(!acct) return {ok:false, reason:'bad'};
+  if(acct.lockedUntil && new Date(acct.lockedUntil) > new Date())
+    return {ok:false, reason:'locked', until:acct.lockedUntil};
+
+  const hash = await derive(password, unb64(acct.salt), acct.iterations);
+  if(!sameBytes(hash, unb64(acct.hash))){
+    acct.failed = (acct.failed||0)+1;
+    if(acct.failed >= AUTH.MAX_TRIES){
+      acct.lockedUntil = new Date(Date.now()+AUTH.LOCKOUT_MS).toISOString();
+      acct.failed = 0;
+      await put('account:'+acct.employeeNo, acct);
+      return {ok:false, reason:'locked', until:acct.lockedUntil};
+    }
+    await put('account:'+acct.employeeNo, acct);
+    return {ok:false, reason:'bad', left:AUTH.MAX_TRIES-acct.failed};
+  }
+  acct.failed=0; acct.lockedUntil=null; acct.lastSignIn=nowTS();
+  await put('account:'+acct.employeeNo, acct);
+  return {ok:true, account:acct};
+}
+
+function newSession(acct){
+  return { name:acct.name, employeeNo:acct.employeeNo, role:acct.role,
+           section:acct.section, roleSource:acct.roleSource,
+           issuedAt:nowTS(),
+           expiresAt:new Date(Date.now()+AUTH.SESSION_MS).toISOString() };
+}
+const sessionLive = s => !!(s && s.expiresAt && new Date(s.expiresAt) > new Date());
+
+/* ── screens ─────────────────────────────────────────────────────── */
+
+let authMode = 'signin';   // 'signin' | 'register'
+let authMsg  = null;       // {text, bad}
+
+function pwProblem(pw, confirm){
+  if(pw.length < AUTH.MIN_PW) return `Password must be at least ${AUTH.MIN_PW} characters.`;
+  if(pw !== confirm)          return 'The two passwords do not match.';
+  return null;
+}
+
+function renderAuth(app){
+  const reg = authMode==='register';
   app.innerHTML = `
   <div class="stage"><div class="stagebox">
     <div class="brandbig">
       <div class="b1">Unki GeoTech</div>
-      <div class="b2">BMSZ marking &amp; face measurement · sign in</div>
+      <div class="b2">BMSZ marking &amp; face measurement · ${reg?'create an account':'sign in'}</div>
     </div>
+
+    ${!cryptoOK()?`<div class="note stop"><span class="mk">⛔</span><div>
+      <b>This browser cannot hash passwords securely.</b> Sign-in and account creation are
+      disabled. Open the app over https or as the installed PWA — never over plain http.
+    </div></div>`:''}
+
+    <div class="chips" style="margin-bottom:18px">
+      <button class="chip ${reg?'':'sel'}" data-mode="signin">Sign in</button>
+      <button class="chip ${reg?'sel':''}" data-mode="register">Create account</button>
+    </div>
+
+    ${authMsg?`<div class="note ${authMsg.bad?'stop':'go'}">
+      <span class="mk">${authMsg.bad?'!':'✓'}</span><div>${esc(authMsg.text)}</div></div>`:''}
+
     <div class="card">
-      <h3 class="sec">Identify yourself</h3>
+      <h3 class="sec">${reg?'Your details':'Identify yourself'}</h3>
       ${help(`<p class="hint" style="margin:0 0 16px">
         Every record you create is signed with your name and employee number and cannot
         be edited afterwards. <span class="clause">STD-201 §9.1</span>
       </p>`)}
-      <div id="ulist">
-        ${USERS.map((u,i)=>`<button class="pick" data-i="${i}">
-          <span><b>${esc(u.name)}</b><br><span>${esc(u.role)}</span></span>
-          <span>${esc(u.employeeNo)}</span></button>`).join('')}
-      </div>
-      <hr class="div">
-      <label class="f" for="pin">Cap-lamp / PIN</label>
-      <input type="password" id="pin" inputmode="numeric" placeholder="Any 4 digits for this prototype">
-      <button class="btn" id="go" disabled>Sign in</button>
-      ${help(`<p class="hint">Credentials are cached on the device so you can sign in underground
+
+      ${reg?`
+        <label class="f" for="aName">Full name</label>
+        <input type="text" id="aName" autocomplete="name" placeholder="e.g. T. Chidindi">
+
+        <label class="f" style="margin-top:14px" for="aNo">Employee number</label>
+        <input type="text" id="aNo" class="num" autocomplete="username" placeholder="e.g. UK-4471">
+
+        <label class="f" style="margin-top:16px">Section</label>
+        <div class="chips" id="aSection">${SECTIONS.map((s,i)=>
+          `<button class="chip ${i===0?'sel':''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+
+        <label class="f" style="margin-top:16px">Role</label>
+        <div class="chips" id="aRole">${ROLES.map((r,i)=>
+          `<button class="chip ${i===0?'sel':''}" data-role="${esc(r)}"
+            style="height:auto;padding:12px 15px;font-size:14.5px">${esc(r)}</button>`).join('')}</div>
+        <div class="note warn" style="margin-top:14px"><span class="mk">◆</span><div>
+          Role here is <b>self-declared</b> and is recorded as such. It grants nothing on its
+          own — in production the role comes from the RLS migration on the shared project, and
+          authorising a deviation still requires the Chief Geologist.
+          <span class="clause">§7.3, §9.1</span></div></div>
+
+        <label class="f" style="margin-top:16px" for="aPw">Password
+          <span class="clause">at least ${AUTH.MIN_PW} characters</span></label>
+        <input type="password" id="aPw" autocomplete="new-password">
+
+        <label class="f" style="margin-top:14px" for="aPw2">Confirm password</label>
+        <input type="password" id="aPw2" autocomplete="new-password">
+
+        <button class="btn" id="doRegister" ${cryptoOK()?'':'disabled'}>Create account</button>
+      `:`
+        <label class="f" for="iNo">Employee number</label>
+        <input type="text" id="iNo" class="num" autocomplete="username" placeholder="e.g. UK-4471">
+
+        <label class="f" style="margin-top:14px" for="iPw">Password</label>
+        <input type="password" id="iPw" autocomplete="current-password">
+
+        <button class="btn" id="doSignin" ${cryptoOK()?'':'disabled'}>Sign in</button>
+      `}
+      ${help(`<p class="hint">Accounts are held on this device so you can sign in underground
         with no network. <span class="clause">Brief §5, §31</span></p>`)}
     </div>
   </div></div>`;
 
-  let pickIdx = null;
-  const refresh = ()=>{
-    const pin=document.getElementById('pin').value.trim();
-    document.getElementById('go').disabled = !(pickIdx!==null && pin.length>=4);
+  app.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{
+    authMode=b.dataset.mode; authMsg=null; renderAuth(app); });
+
+  const pickOne=(wrap,attr)=>{
+    const box=app.querySelector('#'+wrap); if(!box) return ()=>null;
+    box.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
+      box.querySelectorAll('.chip').forEach(x=>x.classList.remove('sel'));
+      b.classList.add('sel'); });
+    return ()=>{ const s=box.querySelector('.chip.sel'); return s?s.dataset[attr]:null; };
   };
-  app.querySelectorAll('.pick').forEach(b=>b.onclick=()=>{
-    app.querySelectorAll('.pick').forEach(x=>x.classList.remove('sel'));
-    b.classList.add('sel'); pickIdx=+b.dataset.i; refresh();
-  });
-  document.getElementById('pin').oninput = refresh;
-  document.getElementById('go').onclick = async ()=>{
-    session = {...USERS[pickIdx]};
-    await put('session', session);
-    shift = newShift(); await put('shift:current', shift);
-    stage='reentry'; renderShell();
-  };
+  const getSection=pickOne('aSection','sec');
+  const getRole=pickOne('aRole','role');
+  const val=id=>{ const el=app.querySelector('#'+id); return el?el.value:''; };
+
+  const enter=(id,run)=>{ const el=app.querySelector('#'+id);
+    if(el) el.onkeydown=e=>{ if(e.key==='Enter') run(); }; };
+
+  if(reg){
+    const submit=async()=>{
+      const name=val('aName').trim(), no=val('aNo').trim();
+      if(!name){ authMsg={text:'Enter your full name.',bad:true}; return renderAuth(app); }
+      if(!no){ authMsg={text:'Enter your employee number.',bad:true}; return renderAuth(app); }
+      const bad=pwProblem(val('aPw'), val('aPw2'));
+      if(bad){ authMsg={text:bad,bad:true}; return renderAuth(app); }
+      try{
+        await createAccount({name, employeeNo:no, role:getRole(),
+                             section:getSection(), password:val('aPw')});
+        authMode='signin';
+        authMsg={text:'Account created for '+normNo(no)+'. Sign in to start a shift.',bad:false};
+      }catch(e){ authMsg={text:e.message,bad:true}; }
+      renderAuth(app);
+    };
+    app.querySelector('#doRegister').onclick=submit;
+    enter('aPw2',submit);
+  } else {
+    const submit=async()=>{
+      const no=val('iNo').trim(), pw=val('iPw');
+      if(!no||!pw){ authMsg={text:'Employee number and password required.',bad:true}; return renderAuth(app); }
+      const btn=app.querySelector('#doSignin');
+      btn.disabled=true; btn.textContent='Checking…';
+      const r=await authenticate(no,pw);
+      if(!r.ok){
+        authMsg = r.reason==='locked'
+          ? {text:'Too many failed attempts. This account is locked until '+
+                  fmtT(r.until)+'.',bad:true}
+          : r.reason==='nocrypto'
+          ? {text:'This browser cannot hash passwords securely.',bad:true}
+          /* One message for both failures — on purpose. */
+          : {text:'Employee number or password is incorrect.'+
+                  (r.left!=null?' '+r.left+' attempt(s) left before lockout.':''),bad:true};
+        return renderAuth(app);
+      }
+      session = newSession(r.account);
+      await put('session', session);
+      shift = newShift(); await put('shift:current', shift);
+      authMsg=null; stage='reentry'; renderShell();
+    };
+    app.querySelector('#doSignin').onclick=submit;
+    enter('iNo',submit); enter('iPw',submit);
+  }
 }
 
 /* ═══ 8 · RE-ENTRY BOARD ══════════════════════════════════════════════
@@ -760,7 +989,8 @@ function renderReentry(app){
 
   document.getElementById('out').onclick = async()=>{
     session=null; place=null; shift=null;
-    await put('session',null); stage='login'; renderShell();
+    await put('session',null);
+    authMode='signin'; authMsg=null; stage='login'; renderShell();
   };
   document.getElementById('refresh').onclick = ()=>loadFeed();
 
@@ -1821,7 +2051,8 @@ function renderSignout(main){
       signout:s.signout, deviation:s.deviation,
       startedAt:s.startedAt, endedAt:s.endedAt, shiftName:s.shiftName});
     await put('shift:current',null); await put('place',null);
-    shift=null; place=null; OS=null; FL=null; stage='login'; session=null; await put('session',null);
+    shift=null; place=null; OS=null; FL=null; session=null; await put('session',null);
+    authMode='signin'; authMsg=null; stage='login';
     renderShell(); flash('Shift closed and signed out');
   };
 }
@@ -1968,7 +2199,7 @@ function render(){
 function renderShell(){
   const app=document.getElementById('app');
   clearInterval(window._clk);
-  if(stage==='login')   return renderLogin(app);
+  if(stage==='login')   return renderAuth(app);
   if(stage==='reentry') return renderReentry(app);
   renderAppShell(app);
 }
@@ -1983,6 +2214,16 @@ function renderShell(){
   shift   = await get('shift:current');
   place   = await get('place');
   await loadAll();
+
+  /* A stored session past its expiry is not a session. Drop it and make
+     the person sign in again rather than letting a shift-old token keep
+     signing records. The captured work is untouched — it stays in the
+     store and syncs on its own. */
+  if(session && !sessionLive(session)){
+    session = null;
+    await put('session', null);
+    authMsg = {text:'Your session has expired. Sign in again to continue.', bad:false};
+  }
 
   if(session && shift && place) stage='app';
   else if(session)              stage='reentry';
