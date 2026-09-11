@@ -12,12 +12,46 @@ Sister app to **slam-reentry-system**. Same mine, same crews, same
 Supabase project. Read that repo's CLAUDE.md before touching anything
 here — its hard rules apply to this repo too.
 
-## The rework — read before anything else
+## REWORK 2 — read this first
+
+A second round of handwritten notes, confirmed by the technician's
+superiors, so the §7.3 authorisation chain holds. Where this section and
+anything below disagree, this section is current.
+
+Screen order is now: **Sign in → Acknowledgement → Face log → Offsets /
+Structures → Shift report → Sign out.**
+
+- **The BMSZ marking screen is gone.** With it went Rule R4 — see the
+  hard rules below, because this changes one of them.
+- **The re-entry board is optional.** When it is unavailable the
+  technician enters the face by hand. Blast number and hardness were
+  struck off and are not collected. Hand-entered faces carry
+  `place.source = 'manual'` and have **not** been cleared for entry.
+- **Acknowledgement is its own screen and is the gate**: end readiness,
+  team on face, miner acknowledgement. It cannot be passed with the area
+  declared not made safe or with no miner named.
+- **"End is cleaned to the footwall" was removed** from readiness. §9.2's
+  wording — *"No end will be marked unless it is cleaned to the
+  footwall"* — is therefore no longer enforced by this app.
+- **Offsets are TWO ROUNDS**: the same stations walked at **2 m** from
+  the face, then again at **5 m**. Both must be complete before save.
+  Tape set-up confirmation removed.
+- **F/W readings are forced negative** at the keypad.
+- **Mean F/W excess (cm) added**; **height range removed**.
+- **The 9 m channel rule now flags for sampling** rather than only
+  warning. It still never blocks.
+- **Face photo with mark-up** added to Structures — this reverses the
+  old "no photography" rule.
+- **Notes / log book and the Management screen are gone.** The report is
+  renamed **Shift report**.
+- Face log keeps advance, face length/width/height, survey peg, channel
+  ID and TARP class. XRF reading and the design-cut pair were removed.
+
+## The first rework
 
 The app was cut back to one job: get the tape offsets off the face and
 in front of the people who act on them. Basis: **Chief Geologist meeting
-notes**, which is the §7.3 authorisation for the deviations below. Where
-this section and the rest of this file disagree, this section is current.
+notes**, the §7.3 authorisation for the deviations below.
 
 - Offsets are stored in **centimetres**. Metres appear at exactly two
   places, both through `toM()`: the width-control report and the
@@ -62,14 +96,19 @@ Inherited from SLAM, and they are not negotiable here either:
 Specific to this app:
 
 - **The procedure is a locked gate chain. Never add a bypass.** The
-  chain is now one gate shorter and starts at the face log: BMSZ
-  marking, offsets and structures cannot be reached until a face log
-  exists, and a face log cannot be submitted with the area declared not
-  made safe or with no overseer named. If a screen becomes reachable out
-  of order, that is a bug, not a shortcut.
-- **Rule R4 is absolute.** Where channel samples have been requested,
-  the BMSZ shall NOT and will NOT be marked as a continuous line. Only
-  indicative marks. §9.7 is emphatic. Enforce it in code, not in copy.
+  chain is: acknowledgement → face log → offsets and structures. The
+  acknowledgement screen cannot be passed with the area declared not made
+  safe or with no miner named; until it is passed the face log is
+  unreachable, and until a face log exists offsets and structures are
+  unreachable. If a screen becomes reachable out of order, that is a bug,
+  not a shortcut.
+- **Rule R4 is no longer enforced by this app.** §9.7 blocks marking a
+  continuous line where channel samples have been requested. That block
+  lived on the BMSZ marking screen, which REWORK 2 removed on
+  instruction. Nothing else here records a marking decision, so nothing
+  else can enforce it. This is a known, authorised gap, not an oversight
+  — if a marking decision ever returns to this app, the R4 block returns
+  with it, in code and not in copy.
 - **Never overwrite an observation.** What the technician measured and
   what a geologist later interprets are separate values, both retained,
   both attributed. Corrections are new rows.
@@ -212,48 +251,61 @@ Worked evidence from the supplied sheets:
 Limit sets are versioned data, never hard-coded constants. Changing one
 requires Chief Geologist authorisation and an audit row.
 
-Measurement geometry is fixed by §9.8 and must not be relaxed:
-1 m from the face, first station 1 m from the sidewall, down-dip to
-up-dip, 50 m tape taut top to bottom of bord. Station spacing is the one
-part of §9.8 the rework overrides — see the rework section above.
+Measurement geometry, as amended by REWORK 2: stations at 1 m with the
+first 1 m from the sidewall, down-dip to up-dip, no station zero — and
+the whole traverse is walked **twice**, standing **2 m** from the face
+and then **5 m**. §9.8's "1 m from the face" and §9.8.iv's two-metre
+station interval are both overridden, under the §7.3 chain.
 
-Verified against sheet NS3 12-07-10, a 7.2 m face on decline limits:
-6 offsets · mean H/W 245.33 · mean F/W −134.5 · mean mining height
-379.83 (range 376–383) · mean over-break 95.33 cm · 3.80 m to
-management. Those figures are the regression target for any change to
-`osStats()`.
+Verified against sheet NS3 12-07-10, a 7.2 m face on decline limits, as
+round 1: 6 offsets · mean H/W 245.33 · mean F/W −134.5 · mean mining
+height 379.83 · mean H/W excess 95.33 cm · **mean F/W excess 34.5 cm** ·
+3.80 m to management. Those figures are the regression target for any
+change to `statsFor()`.
 
 ## Deliberately absent
 
-- **No photography.** No camera, no face-mapping canvas, no image
-  columns. Removed on instruction. Do not reintroduce.
 - **No sampling module.** Sample IDs, bags and lengths are out of scope.
-  The *channel sampling request* stays — it is not a sampling feature,
-  it is the gate that triggers the R4 block on continuous marking.
 
-Removed by the rework. Do not reintroduce without going back to the
-Chief Geologist:
+Removed by the first rework:
 
 - **No SHE checklists.** PPE, tools, transport, underground register
   and XRF pre-inspection all duplicated controls the mine runs
-  elsewhere. The §9.2 end-readiness gate is NOT one of these — it stays,
-  on the face log.
+  elsewhere.
 - **No hazard form and no SOS button.** Hazards go through the mine's
   own reporting system.
-- **No team-engagement screen.** Who was on the face is now four
-  role chips on the face log.
-- **No waste tonnage.** Unconfirmed formula, see the rework section.
+- **No waste tonnage.** Unconfirmed formula, see open decision 11.
 - **No station-interval choice.** The traverse is applied.
+
+Removed by REWORK 2:
+
+- **No BMSZ marking screen** — and therefore no R4 block. See the hard
+  rules.
+- **No notes / log book screen.**
+- **No Management screen.**
+- **No tape set-up confirmation** on offsets.
+- **No height range** in the offset summary.
+- **No XRF reading or design-cut pair** on the face log.
+
+**Photography is now IN**, reversing the earlier "no photography, do not
+reintroduce". REWORK 2 note 7 adds a face photo to Structures that the
+technician marks up — waste patches, geological features — so a
+geologist can see what was meant. It is a plain file input and a 2D
+canvas, no library. Downscaled to 1280 px at quality 0.72, because a
+full-resolution photo per structure would fill the device store before
+the shift ended. **The photo is an addition to the written record, never
+a replacement** — type, strike, dip and distance are still required, and
+a drawing is not a measurement.
 
 ## Data model sketch
 
-`face_logs` (peg, peg_distance, face_length, channel_id, dist_to_face,
-channel_far, tarp, xrf, design_hw_cm, design_fw_cm, readiness, team,
-area_safe, overseer, structural) · `bmsz_markings` (visual_id, xrf
-profile, ppv, confidence, mark_type continuous|indicative,
-sample_requested) · `offset_sets` + `offset_stations` (dist, hw_cm,
-fw_cm, height_cm, mandatory, cause) · `structures` · `shift_records` ·
-`audit_log`.
+`face_logs` (peg, advance, face_length, face_width, face_height,
+channel_id, dist_to_face, sample_flagged, tarp, structural, source,
+ack) · `offset_sets` (heading, limits + snapshot, and two `rounds`, each
+with `dist` 2 or 5, its `stations` and its own `stats`) ·
+`offset_stations` (dist, hw_cm, fw_cm, height_cm, cause) ·
+`structures` (+ `photo` as a JPEG data URL, `photo_strokes`) ·
+`shift_records` · `audit_log`.
 
 Every row carries observer, timestamp, device, sync state, version.
 
@@ -261,6 +313,10 @@ Every `offset_sets` row also snapshots the limit set that judged it —
 `hw_limit`, `fw_limit`, `limit_version`, `limit_label` — so a limit
 revised next year cannot silently restate what an old face was measured
 against. Never read limits live when displaying a historical record.
+
+Face photos are stored inline as data URLs today. That is fine for a
+device store and wrong for Postgres — when the Supabase path is built,
+they belong in Storage with the row holding a reference.
 
 ## Open decisions — blocking full spec
 
@@ -292,9 +348,9 @@ Opened by the rework, all recorded rather than guessed at:
 12. **Design cut values.** Read as H/W +60 cm and F/W −140 cm for North,
     which would give exactly the 200 cm flag height. Unconfirmed, so
     they are an optional pair of fields rather than a rule.
-13. **The 2 m and 5 m offsets.** Built as *both stations mandatory
-    before save*. If two extra readings separate from the 1 m traverse
-    were meant, that is a different build.
+13. ~~The 2 m and 5 m offsets~~ — RULED by REWORK 2. They are two
+    ROUNDS, not two stations: the traverse is walked at 2 m from the
+    face and again at 5 m.
 14. **TARP classes 1 / 2 / 3 / S.** The values are recorded; their
     meaning was not given, so no behaviour hangs off the choice. DERIVED.
 15. **The 9 m channel limit.** Warns, never blocks. The exact distance
@@ -324,6 +380,31 @@ Opened by the sign-in rework:
 22. **Account recovery.** There is none. A technician who forgets a
     password underground cannot sign in and cannot capture. Needs a
     ruling before production — this is the one that will bite first.
+
+Opened by REWORK 2:
+
+23. **R4 has no home.** §9.7's block on continuous marking where samples
+    were requested went with the BMSZ screen. Authorised, but the mine
+    should know the app no longer enforces it and decide where it now
+    lives.
+24. **§9.2 "cleaned to the footwall"** is likewise no longer enforced.
+    Same question: where does that check live now?
+25. **Hand-entered faces bypass re-entry.** A face typed in by hand has
+    had no gas or re-entry clearance. The app records `source:'manual'`
+    and says so on screen; it cannot do more. Confirm this is acceptable
+    and who reviews those records.
+26. **Two words from the notes I could not read**, and guessed:
+    "O/I Miner" on the team list, and a phrase under the miner
+    acknowledgement that looked like "OPP is true" — not built, because
+    I could not read it. Confirm both.
+27. **"Overminer" vs "Miner" acknowledgement.** Page 1 of the notes says
+    Overminer, the design page says Miner. Built as Miner.
+28. **Station spacing inside a round** is still 1 m. The notes fix the
+    two round distances but say nothing about spacing, so decision 2's
+    ruling was carried forward.
+29. **Photo retention.** Face photos are stored on the device at 1280 px
+    / q0.72. No retention rule, no size cap across a shift, and no
+    Storage bucket yet. Decide before production.
 
 ## When making changes
 
