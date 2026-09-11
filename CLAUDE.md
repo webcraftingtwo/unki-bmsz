@@ -12,21 +12,62 @@ Sister app to **slam-reentry-system**. Same mine, same crews, same
 Supabase project. Read that repo's CLAUDE.md before touching anything
 here — its hard rules apply to this repo too.
 
-## REWORK 2 — read this first
+## REWORK 3 — the board is gone, and how rendering works
+
+- **The re-entry board is removed.** The workplace screen (`renderPlace`)
+  is the only way into a shift: the technician names the face and types
+  its parameters. Sign in → **Workplace** → Acknowledgement → Face log →
+  Offsets / Structures → Shift report → Sign out.
+- **What went with it**, recorded so it is not discovered by surprise:
+  re-entry status no longer gates entry at all; SLAM's Bord Cycle
+  Tracker queues work nowhere; advance, peg and face dimensions are
+  self-asserted rather than carried from the blast record.
+- There is no mock feed and no `fetchReentryFeed()`. If the feed
+  returns, it belongs behind one function that fills `place` — nothing
+  else in the file ever knew where `place` came from.
+
+### Rendering — the rule that stops a whole class of bug
+
+A full render replaces `main.innerHTML`, which destroys every element
+inside it **including the one being typed in**. Any text field whose
+`oninput` called `render()` lost focus and caret on every keystroke.
+That was a real, reported bug: typing a miner's name was one character
+per tap.
+
+Two rules, in order:
+
+1. **Never re-render on a keystroke.** Text fields update state only,
+   and whatever depends on them is patched in place — `refreshAckGate()`,
+   `refreshChannelFlag()`, the workplace traverse preview. Use
+   `addEventListener('input', …)`, never `oninput = … render()`.
+2. **A full render carries focus across it.** `render()` wraps the swap
+   in `captureFocus()` / `restoreFocus()` — id, caret range and scroll.
+   That is the safety net for anything rule 1 misses.
+
+Also: a view change no longer rebuilds the shell. `setView()` swaps only
+the content region, patches the nav, and plays the enter animation.
+Online/offline patches the net pill rather than redrawing the screen
+under the technician.
+
+Motion lives in four tokens — `--ease`, `--t-fast`, `--t`, `--t-slow` —
+and everything interactive transitions the same way, on transform,
+opacity and colour only. All of it is disabled under
+`prefers-reduced-motion`.
+
+## REWORK 2
 
 A second round of handwritten notes, confirmed by the technician's
 superiors, so the §7.3 authorisation chain holds. Where this section and
 anything below disagree, this section is current.
 
-Screen order is now: **Sign in → Acknowledgement → Face log → Offsets /
-Structures → Shift report → Sign out.**
+(Screen order was revised again by REWORK 3 above.)
 
 - **The BMSZ marking screen is gone.** With it went Rule R4 — see the
   hard rules below, because this changes one of them.
-- **The re-entry board is optional.** When it is unavailable the
-  technician enters the face by hand. Blast number and hardness were
-  struck off and are not collected. Hand-entered faces carry
-  `place.source = 'manual'` and have **not** been cleared for entry.
+- ~~The re-entry board is optional.~~ REWORK 3 removed it entirely.
+  Blast number and hardness are still not collected. Every face now
+  carries `place.source = 'manual'` and has **not** been cleared for
+  entry by anything.
 - **Acknowledgement is its own screen and is the gate**: end readiness,
   team on face, miner acknowledgement. It cannot be passed with the area
   declared not made safe or with no miner named.
@@ -135,7 +176,9 @@ it is cleaned to the footwall". That is exactly the state after Support:
 Blasting → Lashing → Support → [BMSZ MARKING] → Drilling → ...
 ```
 
-Contract:
+Contract — **NOT IMPLEMENTED.** REWORK 3 removed the re-entry board, so
+none of the following is wired up today. It is kept as the design intent
+for if and when the feed returns.
 
 - A bord reaching **Support complete** surfaces to the Geological
   Technician for that section. Nothing else queues work to GeoTech.
@@ -405,6 +448,17 @@ Opened by REWORK 2:
 29. **Photo retention.** Face photos are stored on the device at 1280 px
     / q0.72. No retention rule, no size cap across a shift, and no
     Storage bucket yet. Decide before production.
+
+Opened by REWORK 3:
+
+30. **Nothing checks re-entry clearance any more.** With the board gone,
+    a technician can open any face by typing its name. The gas-safety
+    and re-entry gates that CLAUDE.md's integration contract relies on
+    are not present in this app. Authorised, but the mine must decide
+    where that check now lives.
+31. **Face parameters are self-asserted.** Advance, peg and dimensions
+    are typed rather than read from the blast record, so a typo is
+    indistinguishable from a measurement. Confirm acceptable.
 
 ## When making changes
 

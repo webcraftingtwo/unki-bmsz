@@ -46,7 +46,17 @@
        s1 inside a control · s2 between fields · s3 inside a card
        s4 between cards    · s5 between sections of a screen */
   --s1:8px; --s2:14px; --s3:22px; --s4:30px; --s5:46px;
+
+  /* Motion. One curve and three durations, so everything that moves
+     moves the same way. Short enough to feel immediate with a glove on,
+     long enough to read as a transition rather than a flicker.
+     All of it is switched off under prefers-reduced-motion. */
+  --ease:cubic-bezier(.2,.8,.25,1);
+  --t-fast:110ms; --t:170ms; --t-slow:260ms;
 }
+
+/* Smooth scrolling, but never against someone who has asked for less. */
+@media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth;} }
 
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
@@ -54,8 +64,40 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
   -webkit-font-smoothing:antialiased;overscroll-behavior-y:none;}
 button,input,select,textarea{font-family:inherit;font-size:inherit;}
 button{cursor:pointer;}
-:focus-visible{outline:3px solid var(--paint);outline-offset:2px;}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+:focus-visible{outline:3px solid var(--paint);outline-offset:2px;border-radius:4px;}
+
+/* ── motion ───────────────────────────────────────────────────
+   Everything interactive settles the same way. Transitions are on
+   composited or cheap properties only — transform, opacity, colour,
+   border — so they stay smooth on a tablet. */
+.chip,.btn,.check,.mod,.field,.rec,.card,.item,
+nav.tabs button,.railnav button,input,select,textarea{
+  transition:background-color var(--t) var(--ease),
+             border-color var(--t) var(--ease),
+             color var(--t) var(--ease),
+             opacity var(--t) var(--ease),
+             transform var(--t-fast) var(--ease),
+             box-shadow var(--t) var(--ease);
+}
+.chip:active,.check:active,.mod:active{transform:scale(.985);}
+.btn:active{transform:translateY(1px) scale(.995);}
+.pad button{transition:background-color var(--t-fast) var(--ease),
+                       transform var(--t-fast) var(--ease);}
+.pad button:active{transform:scale(.94);}
+
+/* Screen enter. Played on a view change only — never on a keystroke. */
+@keyframes viewIn{from{opacity:0;transform:translateY(10px);}
+                  to{opacity:1;transform:none;}}
+main.enter{animation:viewIn var(--t-slow) var(--ease) both;}
+
+/* Notices arrive rather than appear. */
+@keyframes noteIn{from{opacity:0;transform:translateY(-6px);}
+                  to{opacity:1;transform:none;}}
+.note{animation:noteIn var(--t) var(--ease) both;}
+
+@media (prefers-reduced-motion:reduce){
+  *{transition:none!important;animation:none!important;scroll-behavior:auto!important;}
+}
 
 /* ── layout shell ─────────────────────────────────────────── */
 #app{min-height:100vh;}
@@ -185,7 +227,6 @@ select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,va
   background:var(--paint);color:#161200;font-family:var(--mono);font-weight:700;
   font-size:15px;letter-spacing:.07em;text-transform:uppercase;margin-top:var(--s3);
   display:flex;align-items:center;justify-content:center;gap:9px;}
-.btn:active{transform:translateY(1px);}
 .btn:disabled{opacity:.35;pointer-events:none;}
 .btn.ghost{background:none;color:var(--faint);border-color:var(--line-soft);font-weight:600;}
 .btn.danger{background:var(--rust);border-color:var(--rust);color:#fff;}
@@ -302,11 +343,13 @@ td.n{font-family:var(--mono);}
 .gate.shut .gs{color:var(--faint);}
 
 /* ── flash toast ──────────────────────────────────────────── */
-.flash{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:var(--grow);
+.flash{position:fixed;top:18px;left:50%;background:var(--grow);
   color:#08200F;font-family:var(--mono);font-size:15px;font-weight:700;padding:14px 26px;
-  border-radius:9px;z-index:90;opacity:0;transition:opacity .22s;pointer-events:none;
+  border-radius:9px;z-index:90;opacity:0;pointer-events:none;
+  transform:translateX(-50%) translateY(-14px) scale(.97);
+  transition:opacity var(--t) var(--ease), transform var(--t) var(--ease);
   box-shadow:0 6px 22px rgba(0,0,0,.5);max-width:90vw;text-align:center;}
-.flash.show{opacity:1;}
+.flash.show{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}
 .flash.bad{background:var(--rust);color:#fff;}
 
 
@@ -586,77 +629,21 @@ const BLAST_CAUSES = [
   'Other — see notes',
 ];
 
-/* ═══ 4 · RE-ENTRY INTEGRATION ════════════════════════════════════════
+/* ═══ 4 · SLAM INTEGRATION — REMOVED ══════════════════════════
 
-   ┌───────────────────────────────────────────────────────────────────┐
-   │  INTERFACE CONTRACT — Re-entry App → GeoTech App                  │
-   │                                                                   │
-   │  Replace fetchReentryFeed() with a call to the Re-entry App API.  │
-   │  Nothing else in this file needs to change. Expected shape:       │
-   │                                                                   │
-   │  { id, level, section, bord, headingType,                         │
-   │    blastNumber, blastAt, advance,                                 │
-   │    reentry: { status:'cleared'|'held'|'pending',                  │
-   │               clearedBy, clearedAt, gas:{ch4,co}, note },         │
-   │    minerTask: { tasks:['drilling','face_marking'],                │
-   │                 selectedBy, selectedAt },                         │
-   │    face: { length, width, height },                               │
-   │    peg, pegDistance }                                             │
-   │                                                                   │
-   │  Rules enforced downstream:                                       │
-   │   · status must be 'cleared' before the workplace can be opened   │
-   │   · 'face_marking' in minerTask auto-queues it for this Geo-Tech  │
-   │   · blast number, advance, peg and face dimensions pre-populate   │
-   │     the face log — the technician never retypes them              │
-   └───────────────────────────────────────────────────────────────────┘ */
+   The re-entry board, its mock feed and the interface contract that went
+   with it were removed on instruction. There is no feed from
+   slam-reentry-system any more: the technician names the face and types
+   its parameters on the workplace screen (§8).
 
-const MOCK_REENTRY = [
-  { id:'RE-2026-0912-01', level:'2 Level', section:'North', bord:'2NB3', headingType:'bord',
-    blastNumber:'14', blastAt:'2026-09-12T22:40:00', advance:2.4,
-    reentry:{status:'cleared', clearedBy:'M. Sibanda (Shift Boss)', clearedAt:'2026-09-13T04:15:00',
-             gas:{ch4:0.0, co:3}, note:'Ventilation restored, face washed down.'},
-    minerTask:{tasks:['drilling','face_marking'], selectedBy:'P. Ncube (Miner)', selectedAt:'2026-09-13T04:40:00'},
-    face:{length:11.4, width:11.4, height:2.6}, peg:'1255', pegDistance:19.3 },
+   Consequences, recorded rather than left to be discovered:
+   · Nothing checks re-entry status before a face can be opened.
+   · A bord reaching "Support complete" in SLAM queues work nowhere.
+   · Advance, peg and face dimensions are self-asserted, not carried.
 
-  { id:'RE-2026-0912-02', level:'3 Level', section:'North', bord:'NS3', headingType:'decline',
-    blastNumber:'09', blastAt:'2026-09-12T23:05:00', advance:2.1,
-    reentry:{status:'cleared', clearedBy:'M. Sibanda (Shift Boss)', clearedAt:'2026-09-13T04:22:00',
-             gas:{ch4:0.0, co:2}, note:'Cleared. Loose barred in sidewall.'},
-    minerTask:{tasks:['face_marking'], selectedBy:'P. Ncube (Miner)', selectedAt:'2026-09-13T04:41:00'},
-    face:{length:7.2, width:7.2, height:2.8}, peg:'1301', pegDistance:5.1 },
+   If the feed returns, it belongs behind one function that fills
+   `place` — the rest of this file never knew where `place` came from. */
 
-  { id:'RE-2026-0912-03', level:'2 Level', section:'South', bord:'2SB1', headingType:'bord',
-    blastNumber:'21', blastAt:'2026-09-12T22:55:00', advance:2.2,
-    reentry:{status:'held', clearedBy:null, clearedAt:null, gas:{ch4:0.6, co:41},
-             note:'HELD — fumes not cleared, CO above re-entry limit. Re-test scheduled.'},
-    minerTask:{tasks:[], selectedBy:null, selectedAt:null},
-    face:{length:10.8, width:10.8, height:2.6}, peg:'1188', pegDistance:22.7 },
-
-  { id:'RE-2026-0912-04', level:'3 Level', section:'South', bord:'3SB2', headingType:'bord',
-    blastNumber:'07', blastAt:'2026-09-12T23:20:00', advance:2.5,
-    reentry:{status:'pending', clearedBy:null, clearedAt:null, gas:null,
-             note:'Awaiting examination.'},
-    minerTask:{tasks:[], selectedBy:null, selectedAt:null},
-    face:{length:11.0, width:11.0, height:2.7}, peg:'1342', pegDistance:14.2 },
-];
-
-let reentryFeed = [];
-let feedFetchedAt = null;
-
-async function fetchReentryFeed(){
-  /* ── SWAP THIS FOR THE REAL RE-ENTRY APP CALL ──
-     const r = await fetch(REENTRY_API + '/cleared?shift=' + shiftCode());
-     return await r.json();                                              */
-  await new Promise(r=>setTimeout(r,420));
-  return JSON.parse(JSON.stringify(MOCK_REENTRY));
-}
-
-/* Workplaces the miner has flagged for face marking AND re-entry has cleared. */
-function assignedToMe(){
-  return reentryFeed.filter(r =>
-    r.reentry.status==='cleared' && (r.minerTask.tasks||[]).includes('face_marking'));
-}
-function canOpen(r){ return r.reentry.status==='cleared'; }
 
 /* ═══ 5 · STORAGE ═════════════════════════════════════════════════════ */
 
@@ -935,6 +922,10 @@ const sessionLive = s => !!(s && s.expiresAt && new Date(s.expiresAt) > new Date
 
 let authMode = 'signin';   // 'signin' | 'register'
 let authMsg  = null;       // {text, bad}
+/* Survives the re-render after a failed attempt. Retyping an employee
+   number because the password was wrong is needless work; the password
+   itself is deliberately NOT kept. */
+let authNo   = '';
 
 function pwProblem(pw, confirm){
   if(pw.length < AUTH.MIN_PW) return `Password must be at least ${AUTH.MIN_PW} characters.`;
@@ -1002,7 +993,8 @@ function renderAuth(app){
         <button class="btn" id="doRegister" ${cryptoOK()?'':'disabled'}>Create account</button>
       `:`
         <label class="f" for="iNo">Employee number</label>
-        <input type="text" id="iNo" class="num" autocomplete="username" placeholder="e.g. UK-4471">
+        <input type="text" id="iNo" class="num" autocomplete="username"
+          value="${esc(authNo)}" placeholder="e.g. UK-4471" autocapitalize="characters">
 
         <label class="f" style="margin-top:14px" for="iPw">Password</label>
         <input type="password" id="iPw" autocomplete="current-password">
@@ -1041,7 +1033,7 @@ function renderAuth(app){
       try{
         await createAccount({name, employeeNo:no, role:getRole(),
                              section:getSection(), password:val('aPw')});
-        authMode='signin';
+        authMode='signin'; authNo=normNo(no);
         authMsg={text:'Account created for '+normNo(no)+'. Sign in to start a shift.',bad:false};
       }catch(e){ authMsg={text:e.message,bad:true}; }
       renderAuth(app);
@@ -1051,6 +1043,7 @@ function renderAuth(app){
   } else {
     const submit=async()=>{
       const no=val('iNo').trim(), pw=val('iPw');
+      authNo=no;
       if(!no||!pw){ authMsg={text:'Employee number and password required.',bad:true}; return renderAuth(app); }
       const btn=app.querySelector('#doSignin');
       btn.disabled=true; btn.textContent='Checking…';
@@ -1066,148 +1059,61 @@ function renderAuth(app){
                   (r.left!=null?' '+r.left+' attempt(s) left before lockout.':''),bad:true};
         return renderAuth(app);
       }
+      authNo='';
       session = newSession(r.account);
       await put('session', session);
       shift = newShift(); await put('shift:current', shift);
-      authMsg=null; stage='reentry'; renderShell();
+      authMsg=null; stage='place'; renderShell();
     };
     app.querySelector('#doSignin').onclick=submit;
     enter('iNo',submit); enter('iPw',submit);
   }
 }
 
-/* ═══ 8 · RE-ENTRY BOARD ══════════════════════════════════════════════
-   Fed by the Re-entry App. A workplace that is not cleared cannot be
-   opened from the board — the button is disabled, not merely warned
-   about.
+/* ═══ 8 · WORKPLACE ═══════════════════════════════════════════════════
 
-   REWORK 2, note 2: the board is now OPTIONAL. Where it is unavailable
-   the technician enters the face parameters by hand instead. Blast
-   number and hardness were struck off the list and are not collected.
+   The re-entry board was removed on instruction. What is left is the
+   workplace screen: the technician names the face and enters its
+   parameters, and that is the only way into a shift.
 
-   That is a real loosening and it is worth naming: a hand-entered face
-   has not been cleared by the re-entry system, so the gas-safety and
-   re-entry checks that gate the board do not apply to it. The app
-   records which way a face arrived (place.source) so a reviewer can
-   tell the two apart, and says so on screen before the technician
-   commits. It cannot do more than that from here — the re-entry
-   decision is not this app's to make. */
+   WHAT WENT WITH THE BOARD, so it is not discovered later by surprise:
+   · Re-entry status no longer gates entry. Nothing in this app now
+     checks that a bord was cleared, held or pending before it can be
+     opened. That check lived on the board.
+   · The SLAM Bord Cycle Tracker no longer queues work here. A bord
+     reaching "Support complete" surfaces nowhere.
+   · Advance, peg and face dimensions are typed rather than carried, so
+     they are self-asserted rather than read from the blast record.
 
-let manualOpen = false;
+   Blast number and hardness were struck off the notes and are not
+   collected.                                                           */
 
-function renderReentry(app){
-  app.innerHTML = `
-  <div class="stage"><div class="stagebox" style="max-width:760px">
-    <div class="brandbig">
-      <div class="b1">Re-entry Board</div>
-      <div class="b2">${esc(session.name)} · ${esc(session.section)}</div>
-    </div>
-    ${help(`<div class="note info"><span class="mk">↔</span><div>
-      Live from the <b>Re-entry App</b>. Workplaces appear here once examination is complete.
-      Where the miner has selected <b>face marking</b>, the bord is queued to you automatically
-      and its advance, peg and face dimensions carry across — you do not retype them.
-    </div></div>`)}
-    <div id="feedbox"><div class="empty">Contacting re-entry system…</div></div>
-    <button class="btn ghost" id="refresh">Refresh board</button>
-    <button class="btn ghost" id="manual">Board unavailable — enter face by hand</button>
-    <button class="btn ghost" id="out">Sign out</button>
-  </div></div>`;
-
-  document.getElementById('out').onclick = async()=>{
-    session=null; place=null; shift=null; ACK=null; FL=null; OS=null; PHOTO=null;
-    await put('session',null);
-    authMode='signin'; authMsg=null; stage='login'; renderShell();
-  };
-  document.getElementById('refresh').onclick = ()=>loadFeed();
-  document.getElementById('manual').onclick = ()=>{ manualOpen=true; renderManual(app); };
-
-  async function loadFeed(){
-    const box=document.getElementById('feedbox');
-    box.innerHTML='<div class="empty">Contacting re-entry system…</div>';
-    try{
-      reentryFeed = await fetchReentryFeed(); feedFetchedAt=nowTS();
-    }catch(e){
-      box.innerHTML='<div class="note stop"><span class="mk">!</span><div>Re-entry system '+
-        'unreachable. Records already cached on this device are still available. '+
-        'Do not enter any workplace that has not been cleared.</div></div>'; return;
-    }
-    const mine = assignedToMe();
-    box.innerHTML = `
-      <div class="stats">
-        <div class="stat"><div class="num">${mine.length}</div><div class="lbl">Queued to you</div></div>
-        <div class="stat"><div class="num">${reentryFeed.filter(r=>r.reentry.status==='cleared').length}</div><div class="lbl">Cleared</div></div>
-        <div class="stat hot"><div class="num">${reentryFeed.filter(r=>r.reentry.status!=='cleared').length}</div><div class="lbl">Not cleared</div></div>
-      </div>
-      ${mine.length?`<h3 class="sec">Queued to you — miner selected face marking</h3>`:''}
-      ${mine.map(recCard).join('')}
-      <h3 class="sec" style="margin-top:22px">All workplaces on the board</h3>
-      ${reentryFeed.filter(r=>!mine.includes(r)).map(recCard).join('')}
-      <p class="hint">Board read ${fmtTS(feedFetchedAt)}</p>`;
-    box.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openPlace(b.dataset.open));
-  }
-  loadFeed();
-}
-
-function recCard(r){
-  const st=r.reentry.status, ok=st==='cleared';
-  const mk=(r.minerTask.tasks||[]).includes('face_marking');
-  const gas=r.reentry.gas;
-  return `<div class="rec ${st}">
-    <div class="rh">
-      <span class="rn">${esc(r.bord)}</span>
-      <span class="tag ${ok?'sync':st==='held'?'stop':'pend'}">${ok?'cleared for entry':st==='held'?'held — do not enter':'awaiting examination'}</span>
-    </div>
-    <div class="rm">
-      ${esc(r.level)} · ${esc(r.section)} Section · ${esc(LIMITS[r.headingType].label)}<br>
-      Blast <b>${esc(r.blastNumber)}</b> at ${fmtTS(r.blastAt)} · advance <b>${r.advance} m</b><br>
-      Face <b>${r.face.length} m</b> long · <b>${r.face.width} m</b> wide · <b>${r.face.height} m</b> high<br>
-      ${ok?`Cleared by <b>${esc(r.reentry.clearedBy)}</b> at ${fmtT(r.reentry.clearedAt)}`
-          :`<b style="color:var(--rust)">${esc(r.reentry.note)}</b>`}
-      ${gas?`<br>Gas: CH₄ <b>${gas.ch4}%</b> · CO <b>${gas.co} ppm</b>`:''}
-    </div>
-    <div class="taskchips">
-      ${(r.minerTask.tasks||[]).map(t=>`<span class="tchip ${t==='face_marking'?'mk':''}">${t.replace('_',' ')}</span>`).join('')
-        || '<span class="tchip" style="background:none;color:var(--faint);border-color:var(--line)">no task selected</span>'}
-    </div>
-    ${r.minerTask.selectedBy?`<div class="rm" style="margin-top:8px">Selected by <b>${esc(r.minerTask.selectedBy)}</b> at ${fmtT(r.minerTask.selectedAt)}</div>`:''}
-    <button class="btn ${mk?'':'ghost'} sm" style="width:100%;margin-top:14px" data-open="${r.id}" ${ok?'':'disabled'}>
-      ${ok?(mk?'Open — start procedure':'Open workplace'):'Locked by re-entry'}
-    </button>
-  </div>`;
-}
-
-/* REWORK 2, note 2 — the by-hand path. Blast number and hardness were
-   struck off the note, so they are not asked for. Everything here is
-   self-asserted: nothing has cleared this face for entry. */
-function renderManual(app){
+function renderPlace(app){
+  const p = place || {};
   app.innerHTML = `
   <div class="stage"><div class="stagebox">
     <div class="brandbig">
-      <div class="b1">Face by hand</div>
+      <div class="b1">Workplace</div>
       <div class="b2">${esc(session.name)} · ${esc(session.section)}</div>
     </div>
 
-    <div class="note warn"><span class="mk">◆</span><div>
-      <b>This face has not come through the re-entry system.</b> Nothing here has been cleared
-      for entry, and no gas or re-entry check applies to it. Use this only when the board is
-      unavailable. The record is marked as hand-entered.
-    </div></div>
-
     <div class="card">
-      <h3 class="sec">Workplace</h3>
+      <h3 class="sec">Where are you</h3>
       <div class="grid g2">
         <div><label class="f" for="mBord">Bord / working place</label>
-          <input type="text" id="mBord" class="num" placeholder="e.g. 16N B4"></div>
+          <input type="text" id="mBord" class="num" value="${esc(p.bord||'')}"
+            placeholder="e.g. 16N B4" autocomplete="off" autocapitalize="characters"></div>
         <div><label class="f" for="mLevel">Level</label>
-          <input type="text" id="mLevel" class="num" placeholder="e.g. 3 Level"></div>
+          <input type="text" id="mLevel" class="num" value="${esc(p.level||'')}"
+            placeholder="e.g. 3 Level" autocomplete="off"></div>
       </div>
       <div class="grid g2">
         <div><label class="f">Section</label>
           <div class="chips" id="mSection">${SECTIONS.map((s,i)=>
-            `<button class="chip ${i===0?'sel':''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
-        <div><label class="f">Heading type — sets the design cut</label>
+            `<button class="chip ${(p.section||SECTIONS[0])===s?'sel':''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>
+        <div><label class="f" for="mHead">Heading type — sets the design cut</label>
           <select id="mHead">${Object.entries(LIMITS).map(([k,v])=>
-            `<option value="${k}">${esc(v.label)} · ${v.hw} / ${v.fw} cm</option>`).join('')}</select></div>
+            `<option value="${k}" ${p.headingType===k?'selected':''}>${esc(v.label)} · ${v.hw} / ${v.fw} cm</option>`).join('')}</select></div>
       </div>
     </div>
 
@@ -1215,63 +1121,70 @@ function renderManual(app){
       <h3 class="sec">Face parameters <span class="clause">§9.8.vi</span></h3>
       <div class="grid g2">
         <div><label class="f" for="mAdv">Advance (m)</label>
-          <input type="number" step="0.1" id="mAdv" class="num" placeholder="0.0"></div>
-        <div><label class="f" for="mLen">Face length (m)</label>
-          <input type="number" step="0.1" id="mLen" class="num" placeholder="0.0"></div>
+          <input type="number" step="0.1" id="mAdv" class="num" inputmode="decimal"
+            value="${p.advance??''}" placeholder="0.0"></div>
+        <div><label class="f" for="mLen">Face length (m) <span class="clause">sets the traverse</span></label>
+          <input type="number" step="0.1" id="mLen" class="num" inputmode="decimal"
+            value="${p.faceLength??''}" placeholder="0.0"></div>
       </div>
       <div class="grid g2">
         <div><label class="f" for="mWid">Face width (m)</label>
-          <input type="number" step="0.1" id="mWid" class="num" placeholder="0.0"></div>
+          <input type="number" step="0.1" id="mWid" class="num" inputmode="decimal"
+            value="${p.faceWidth??''}" placeholder="0.0"></div>
         <div><label class="f" for="mHgt">Face height (m)</label>
-          <input type="number" step="0.1" id="mHgt" class="num" placeholder="0.0"></div>
+          <input type="number" step="0.1" id="mHgt" class="num" inputmode="decimal"
+            value="${p.faceHeight??''}" placeholder="0.0"></div>
       </div>
       <div><label class="f" for="mPeg">Survey peg</label>
-        <input type="text" id="mPeg" class="num" placeholder="e.g. 1301"></div>
+        <input type="text" id="mPeg" class="num" value="${esc(p.peg||'')}"
+          placeholder="e.g. 1301" autocomplete="off"></div>
+      <p class="hint" id="mTraverse"></p>
     </div>
 
-    <button class="btn" id="mGo">Open this face</button>
-    <button class="btn ghost" id="mBack">Back to the board</button>
+    <button class="btn" id="mGo">${place?'Update and continue':'Open this face'}</button>
+    <button class="btn ghost" id="mOut">Sign out</button>
   </div></div>`;
 
   app.querySelectorAll('#mSection .chip').forEach(b=>b.onclick=()=>{
     app.querySelectorAll('#mSection .chip').forEach(x=>x.classList.remove('sel'));
     b.classList.add('sel'); });
 
-  app.querySelector('#mBack').onclick=()=>{ manualOpen=false; renderReentry(app); };
+  /* Live traverse preview. State-only handler, patched in place — never
+     a re-render, or the field would lose focus mid-number. */
+  const lenEl=app.querySelector('#mLen'), tv=app.querySelector('#mTraverse');
+  const showTraverse=()=>{
+    const L=num(lenEl.value);
+    if(L==null||L<=0){ tv.textContent='Face length sets how many offsets you will walk.'; return; }
+    const n=stationCount(L);
+    tv.innerHTML=`A ${L} m face is <b>${n} offsets</b> at 1–${stationDist(n-1)} m, `+
+      `read twice — once at ${ROUNDS[0].dist} m from the face and again at ${ROUNDS[1].dist} m.`;
+  };
+  lenEl.addEventListener('input', showTraverse);
+  showTraverse();
+
+  app.querySelector('#mOut').onclick=async()=>{
+    session=null; place=null; shift=null; ACK=null; FL=null; OS=null; PHOTO=null;
+    await put('session',null);
+    authMode='signin'; authMsg=null; stage='login'; renderShell();
+  };
+
   app.querySelector('#mGo').onclick=async()=>{
     const v=id=>{ const el=app.querySelector('#'+id); return el?el.value.trim():''; };
     if(!v('mBord')){ flash('Name the working place',true); return; }
     if(!num(v('mLen'))){ flash('Face length is required — it sets the traverse',true); return; }
     const sec=app.querySelector('#mSection .chip.sel');
     place = {
-      reentryId:null, source:'manual',
+      source:'manual',
       level:v('mLevel')||'—', section:sec?sec.dataset.sec:SECTIONS[0], bord:v('mBord'),
       headingType:app.querySelector('#mHead').value,
-      advance:num(v('mAdv')), peg:v('mPeg'), pegDistance:null,
+      advance:num(v('mAdv')), peg:v('mPeg'),
       faceLength:num(v('mLen')), faceWidth:num(v('mWid')), faceHeight:num(v('mHgt')),
-      clearedBy:null, clearedAt:null, minerTasks:[], minerBy:null,
     };
-    shift.placeId=null;
     await put('place',place); await put('shift:current',shift);
-    manualOpen=false; stage='app'; VIEW='ack'; renderShell();
+    /* A different face invalidates any part-entered capture state. */
+    OS=null; FL=null;
+    stage='app'; VIEW='ack'; renderShell();
   };
-}
-
-async function openPlace(id){
-  const r = reentryFeed.find(x=>x.id===id);
-  if(!r || !canOpen(r)){ flash('Workplace not cleared for entry',true); return; }
-  place = {
-    reentryId:r.id, source:'reentry', level:r.level, section:r.section, bord:r.bord,
-    headingType:r.headingType, blastNumber:r.blastNumber, blastAt:r.blastAt,
-    advance:r.advance, peg:r.peg, pegDistance:r.pegDistance,
-    faceLength:r.face.length, faceWidth:r.face.width, faceHeight:r.face.height,
-    clearedBy:r.reentry.clearedBy, clearedAt:r.reentry.clearedAt,
-    minerTasks:r.minerTask.tasks, minerBy:r.minerTask.selectedBy,
-  };
-  shift.placeId = r.id;
-  await put('place', place); await put('shift:current', shift);
-  stage='app'; VIEW = 'ack';
-  renderShell();
 }
 
 /* ═══ 11 · ACKNOWLEDGEMENT ════════════════════════════════════════════
@@ -1288,12 +1201,34 @@ let ACK = null;
 
 function newAck(){ return {readiness:{}, team:[], areaSafe:null, miner:''}; }
 
+const ackReady = () => READINESS.every(x=>ACK.readiness[x[0]]===true);
+const ackSafe  = () => ACK.areaSafe===true && ACK.miner.trim()!=='';
+const ackCanPass = () => ackReady() && ackSafe();
+
+function ackLabel(){
+  if(!ackReady())            return 'End readiness outstanding — §9.2';
+  if(ACK.areaSafe===false)   return 'Blocked — area not made safe';
+  if(!ackSafe())             return 'Miner must be named';
+  return gates().ack==='done' ? 'Update and continue to face log'
+                              : 'Continue to face log';
+}
+
+/* Patches only what the miner's name affects. Called on every keystroke
+   instead of a full render, so the input keeps focus and caret. */
+function refreshAckGate(main){
+  const go=main.querySelector('#aGo');
+  if(go){ go.disabled=!ackCanPass(); go.textContent=ackLabel(); }
+  const need=main.querySelector('#aNeedMiner');
+  if(need) need.hidden = !(ACK.areaSafe===true && ACK.miner.trim()==='');
+  const card=main.querySelector('#aCard');
+  if(card) card.classList.toggle('ok', ackSafe());
+}
+
 function renderAck(main){
   if(!ACK) ACK = shift.ack ? {...newAck(), ...shift.ack} : newAck();
-  const readyDone = READINESS.every(x=>ACK.readiness[x[0]]===true);
-  const safe = ACK.areaSafe===true && ACK.miner.trim()!=='';
-  const canPass = readyDone && safe;
-  const passed = gates().ack==='done';
+  const readyDone = ackReady();
+  const safe = ackSafe();
+  const canPass = ackCanPass();
 
   main.innerHTML=`
   <div class="eyebrow">Stage 1 · at the face</div>
@@ -1302,7 +1237,8 @@ function renderAck(main){
     was made safe. <span class="clause">STD-201 §9.2, §8.3</span></p>
 
   ${place.source==='manual'?`<div class="note warn"><span class="mk">◆</span><div>
-    <b>${esc(place.bord)} was entered by hand.</b> It has not come through the re-entry system.
+    <b>${esc(place.bord)} was entered by hand.</b> No re-entry clearance applies to it — this
+    app no longer checks one. Satisfy yourself the end is safe before you work it.
   </div></div>`:''}
 
   <div class="card">
@@ -1318,28 +1254,27 @@ function renderAck(main){
         style="height:auto;padding:12px 15px;font-size:14.5px">${esc(r)}</button>`).join('')}</div>
   </div>
 
-  <div class="card ${safe?'ok':''}">
+  <div class="card ${safe?'ok':''}" id="aCard">
     <h3 class="sec">Miner acknowledgement <span class="clause">the one control that blocks</span></h3>
     <div class="chips" id="aSafe">
       <button class="chip ${ACK.areaSafe===true?'sel grow':''}" data-s="yes">Area made safe</button>
       <button class="chip ${ACK.areaSafe===false?'sel rust':''}" data-s="no">Area NOT made safe</button>
     </div>
     <label class="f" style="margin-top:16px" for="aMiner">Miner — named person</label>
-    <input type="text" id="aMiner" value="${esc(ACK.miner)}" placeholder="Name and designation">
+    <input type="text" id="aMiner" value="${esc(ACK.miner)}" placeholder="Name and designation"
+      autocomplete="off" enterkeyhint="done">
     ${ACK.areaSafe===false?`<div class="note stop" style="margin-top:16px"><span class="mk">⛔</span><div>
       <b>The area is declared not made safe.</b> The face log, offsets and structures stay
       locked. Leave the workplace and report it to the miner in charge.
     </div></div>`:''}
-    ${ACK.areaSafe===true&&ACK.miner.trim()===''?`<div class="note warn" style="margin-top:16px">
+    <div class="note warn" id="aNeedMiner" style="margin-top:16px"
+      ${ACK.areaSafe===true&&ACK.miner.trim()===''?'':'hidden'}>
       <span class="mk">◆</span><div>Name the miner who made the declaration. A declaration with
-      nobody behind it is not one.</div></div>`:''}
+      nobody behind it is not one.</div></div>
   </div>
 
   <button class="btn" id="aGo" ${canPass?'':'disabled'}>
-    ${!readyDone?'End readiness outstanding — §9.2'
-      :ACK.areaSafe===false?'Blocked — area not made safe'
-      :!safe?'Miner must be named'
-      :passed?'Update and continue to face log':'Continue to face log'}</button>`;
+    ${ackLabel()}</button>`;
 
   main.querySelectorAll('[data-rd]').forEach(el=>el.onclick=()=>{
     const k=el.dataset.rd;
@@ -1350,7 +1285,14 @@ function renderAck(main){
     render(); });
   main.querySelectorAll('#aSafe .chip').forEach(b=>b.onclick=()=>{
     ACK.areaSafe = b.dataset.s==='yes'; render(); });
-  main.querySelector('#aMiner').oninput=e=>{ ACK.miner=e.target.value; render(); };
+
+  /* Typing the miner's name must NOT re-render — that is what used to
+     destroy the input on every keystroke. Update state, then patch the
+     handful of things that depend on it. */
+  main.querySelector('#aMiner').addEventListener('input', e=>{
+    ACK.miner=e.target.value;
+    refreshAckGate(main);
+  });
 
   main.querySelector('#aGo').onclick=async()=>{
     /* Re-checked here, not only on the button: a disabled button is a
@@ -1392,6 +1334,23 @@ function newFaceLog(){
   return { tarp:'', structural:'', channelId:'', distToFace:'' };
 }
 
+const channelFlagged = () => {
+  const d=num(FL.distToFace);
+  return d!=null && d>CHANNEL_FLAG_M;
+};
+
+/* Patches only what the distance field affects — no full render, so the
+   number keeps focus while it is being typed. */
+function refreshChannelFlag(main){
+  const on=channelFlagged();
+  const note=main.querySelector('#fFlagNote');
+  if(note) note.hidden=!on;
+  const d=main.querySelector('#fFlagDist');
+  if(d) d.textContent = num(FL.distToFace)??'';
+  const card=main.querySelector('#fChanCard');
+  if(card) card.classList.toggle('hot', on);
+}
+
 function renderFaceLog(main){
   if(!FL) FL = newFaceLog();
   const mine = cache.faceLog.filter(e=>e.shiftId===shift.id);
@@ -1405,7 +1364,7 @@ function renderFaceLog(main){
     <span class="clause">STD-201 §9.8.i, §9.8.vi</span></p>
 
   <div class="card pri">
-    <h3 class="sec">Face parameters${place.source==='manual'?'':' — carried from re-entry'}</h3>
+    <h3 class="sec">Face parameters <span class="clause">from the workplace screen</span></h3>
     <div class="grid g2">
       <div><label class="f" for="fAdv">Advance (m)</label>
         <input type="number" step="0.1" id="fAdv" class="num" value="${place.advance??''}"></div>
@@ -1426,20 +1385,21 @@ function renderFaceLog(main){
       once at ${ROUNDS[0].dist} m from the face and again at ${ROUNDS[1].dist} m.</p>
   </div>
 
-  <div class="card ${flagged?'hot':''}">
+  <div class="card ${flagged?'hot':''}" id="fChanCard">
     <h3 class="sec">Channel and classification</h3>
     <div class="grid g2">
       <div><label class="f" for="fChan">Channel ID</label>
         <input type="text" id="fChan" class="num" value="${esc(FL.channelId)}"
-          placeholder="Sampling channel"></div>
+          placeholder="Sampling channel" autocomplete="off"></div>
       <div><label class="f" for="fDist">Distance to face (m)</label>
         <input type="number" step="0.1" id="fDist" class="num" value="${esc(FL.distToFace)}"
-          placeholder="From the channel"></div>
+          placeholder="From the channel" inputmode="decimal"></div>
     </div>
-    ${flagged?`<div class="note warn" style="margin-top:14px"><span class="mk">◆</span><div>
-      <b>${dist} m from the channel — flagged for sampling.</b> Past ${CHANNEL_FLAG_M} m the
-      channel assay can no longer be tied to this face, so this face is marked for sampling.
-      The reading is recorded either way.</div></div>`:''}
+    <div class="note warn" id="fFlagNote" style="margin-top:14px" ${flagged?'':'hidden'}>
+      <span class="mk">◆</span><div>
+      <b><span id="fFlagDist">${dist??''}</span> m from the channel — flagged for sampling.</b>
+      Past ${CHANNEL_FLAG_M} m the channel assay can no longer be tied to this face, so this
+      face is marked for sampling. The reading is recorded either way.</div></div>
     <label class="f" style="margin-top:16px">TARP class</label>
     <div class="chips" id="fTarp">${TARP.map(t=>
       `<button class="chip ${FL.tarp===t?'sel':''}" data-t="${t}">${t}</button>`).join('')}</div>
@@ -1468,9 +1428,14 @@ function renderFaceLog(main){
     <div style="margin-top:9px">${e.synced?'<span class="tag sync">synced</span>':'<span class="tag pend">held on device</span>'}</div>
   </div>`).join(''):'<div class="empty">No face log recorded for this shift</div>'}`;
 
-  const bind=(id,key)=>{ const el=main.querySelector('#'+id); if(el) el.oninput=e=>{ FL[key]=e.target.value; }; };
+  const bind=(id,key)=>{ const el=main.querySelector('#'+id);
+    if(el) el.addEventListener('input', e=>{ FL[key]=e.target.value; }); };
   bind('fChan','channelId'); bind('fStruct','structural');
-  main.querySelector('#fDist').oninput=e=>{ FL.distToFace=e.target.value; render(); };
+  /* Same rule as the miner's name: state only, then patch in place. */
+  main.querySelector('#fDist').addEventListener('input', e=>{
+    FL.distToFace=e.target.value;
+    refreshChannelFlag(main);
+  });
   main.querySelectorAll('#fTarp .chip').forEach(b=>b.onclick=()=>{
     FL.tarp = FL.tarp===b.dataset.t ? '' : b.dataset.t; render(); });
 
@@ -2288,8 +2253,7 @@ function renderDash(main){
   <div class="eyebrow">${esc(session.role)} · ${esc(shift.shiftName)} shift</div>
   <h2 class="title">${esc(session.name.split('.').pop().trim())}</h2>
   <p class="sub">${place?`Working <b>${esc(place.bord)}</b>, ${esc(place.level)}.
-    ${place.source==='manual'?'Entered by hand — not cleared by re-entry.'
-      :'Cleared for re-entry by '+esc(place.clearedBy)+'.'}`
+    ${esc(place.section)} · ${esc(LIMITS[place.headingType].label)}.`
     :'No workplace selected.'}</p>
 
   <div class="gates">
@@ -2377,7 +2341,7 @@ function renderAppShell(app){
     if(!unlocked(v)){ flash('Locked — complete the previous stage',true); return; }
     setView(v);
   });
-  document.getElementById('chg').onclick=()=>{ stage='reentry'; renderShell(); };
+  document.getElementById('chg').onclick=()=>{ stage='place'; renderShell(); };
   clearInterval(window._clk); window._clk=setInterval(tick,20000); tick();
   render();
 }
@@ -2386,25 +2350,84 @@ function navBtn(v,l,tab){
   return `<button data-nav="${v}" class="${VIEW===v?'active':''} ${ok?'':'locked'}">
     ${ok?'':'<span class="lockglyph">🔒</span>'}${esc(l)}</button>`;
 }
+/* ── rendering ────────────────────────────────────────────────────────
+
+   THE BUG THIS FIXES. A full render replaces main.innerHTML, which
+   destroys every element inside it — including the one being typed in.
+   Any text field whose oninput called render() therefore lost focus and
+   caret on EVERY KEYSTROKE: one character per tap, then hunt for the
+   box again.
+
+   Two rules, in order of preference:
+
+   1. DO NOT RE-RENDER ON A KEYSTROKE. Text fields update state only, and
+      whatever depends on them is patched in place — see refreshAckGate()
+      and refreshChannelFlag(). This is the real fix, and it is also what
+      makes typing feel immediate instead of laggy.
+
+   2. When a full render is genuinely needed (a chip, a station, a save),
+      carry focus, caret and scroll across it. That is the safety net for
+      anything rule 1 misses, so the bug cannot quietly come back.      */
+
+const reducedMotion = () =>
+  !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+function captureFocus(){
+  const el=document.activeElement;
+  if(!el||!el.id||el===document.body) return null;
+  const f={id:el.id, scroll:window.scrollY};
+  try{ if('selectionStart' in el && el.selectionStart!=null){
+    f.start=el.selectionStart; f.end=el.selectionEnd; } }catch(e){}
+  return f;
+}
+function restoreFocus(f){
+  if(!f) return;
+  const el=document.getElementById(f.id);
+  if(!el) return;
+  try{ el.focus({preventScroll:true}); }catch(e){ try{ el.focus(); }catch(e2){} }
+  if(f.start!=null){ try{ el.setSelectionRange(f.start,f.end); }catch(e){} }
+  if(Math.abs(window.scrollY-f.scroll)>1) window.scrollTo(0,f.scroll);
+}
+
 function tick(){
   const c=document.getElementById('clk');
   if(c) c.textContent=new Date().toLocaleString(undefined,
     {weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 }
-function setView(v){ VIEW=v; renderAppShell(document.getElementById('app')); window.scrollTo(0,0); }
+
+/* Replays the screen-enter animation. Only on a real view change —
+   replaying it per keystroke is exactly the twitchiness being removed. */
+function playEnter(){
+  const main=document.getElementById('main');
+  if(!main||reducedMotion()) return;
+  main.classList.remove('enter');
+  void main.offsetWidth;          /* force a reflow so the animation restarts */
+  main.classList.add('enter');
+}
+
+/* A view change no longer rebuilds the whole shell — header, workplace
+   bar and rail stay put and only the content region swaps. */
+function setView(v){
+  if(VIEW===v) return;
+  VIEW=v;
+  render();
+  playEnter();
+  window.scrollTo({top:0, behavior: reducedMotion()?'auto':'smooth'});
+}
 
 function refreshNav(){
   document.querySelectorAll('[data-nav]').forEach(b=>{
     const v=b.dataset.nav, ok=unlocked(v);
     b.classList.toggle('locked',!ok);
     b.classList.toggle('active',VIEW===v);
+    b.setAttribute('aria-current', VIEW===v ? 'page' : 'false');
     const g=b.querySelector('.lockglyph');
     if(ok&&g) g.remove();
     if(!ok&&!g) b.insertAdjacentHTML('afterbegin','<span class="lockglyph">\u{1F512}</span>');
   });
   const np=document.querySelector('.netpill');
   if(np) np.innerHTML='<span class="netdot '+(online()?'':'off')+'"></span>'+
-    (online()?'Online':'Offline')+' \u00b7 '+pending()+' held';
+    (online()?'Online':'Offline')+' · '+pending()+' held';
 }
 function render(){
   const main=document.getElementById('main'); if(!main) return;
@@ -2417,22 +2440,27 @@ function render(){
      app root so the header and workplace bar are in scope too. */
   const root=document.getElementById('app');
   if(root) root.className='view-'+VIEW;
+  const f=captureFocus();
   (R[VIEW]||renderDash)(main);
   refreshNav();
+  restoreFocus(f);
 }
 function renderShell(){
   const app=document.getElementById('app');
   clearInterval(window._clk);
-  if(stage==='login')   return renderAuth(app);
-  if(stage==='reentry') return renderReentry(app);
+  if(stage==='login') return renderAuth(app);
+  if(stage==='place') return renderPlace(app);
   renderAppShell(app);
 }
 
 /* ═══ 22 · BOOT ═══════════════════════════════════════════════════════ */
 
 (async function boot(){
-  window.addEventListener('online', ()=>{ if(stage==='app') renderAppShell(document.getElementById('app')); });
-  window.addEventListener('offline',()=>{ if(stage==='app') renderAppShell(document.getElementById('app')); });
+  /* The net pill is the only thing online/offline changes — patch it,
+     do not rebuild the screen underneath the technician. */
+  const netChanged = ()=>{ if(stage==='app') refreshNav(); };
+  window.addEventListener('online', netChanged);
+  window.addEventListener('offline', netChanged);
 
   session = await get('session');
   shift   = await get('shift:current');
@@ -2450,10 +2478,9 @@ function renderShell(){
   }
 
   if(session && shift && place) stage='app';
-  else if(session)              stage='reentry';
+  else if(session)              stage='place';
   else                          stage='login';
 
-  if(stage==='reentry' && !reentryFeed.length){ /* board fetches on render */ }
   renderShell();
 })();
 
