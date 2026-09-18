@@ -8,9 +8,10 @@ Measurements" (20/05/2011, AngloAmerican Platinum era). Marking detail
 sits in **UNKI-MIN-MRM-PRO-200**, referenced at §9.6.3 — NOT YET
 SUPPLIED, ask before assuming anything about marking procedure.
 
-Sister app to **slam-reentry-system**. Same mine, same crews, same
-Supabase project. Read that repo's CLAUDE.md before touching anything
-here — its hard rules apply to this repo too.
+Sister app to **slam-reentry-system**. Same mine, same crews, but a
+**separate Supabase project** — see the hard rules. Read that repo's
+CLAUDE.md before touching anything here; its hard rules apply to this
+repo too.
 
 ## REWORK 3 — the board is gone, and how rendering works
 
@@ -110,7 +111,8 @@ notes**, the §7.3 authorisation for the deviations below.
 ## Stack
 
 - Vanilla HTML / CSS / JS. NO build process, NO framework, NO npm.
-- Supabase backend (Postgres + RLS + auth) — the SAME project as SLAM.
+- Supabase backend (Postgres + RLS + auth) — GeoTech's OWN project,
+  NOT SLAM's. See the hard rules.
 - Installable PWA, vendored dependencies, service worker app-shell cache.
 - Deliberate, for the same reason as SLAM: runs underground on
   ruggedised tablets with no signal.
@@ -122,6 +124,10 @@ notes**, the §7.3 authorisation for the deviations below.
 - vendor/ — mirror SLAM's vendoring. Never re-point at a CDN.
 - sw.js — app shell only. Never intercept Supabase or non-GET.
 - migrations/ — apply BEFORE deploying app code that writes new columns.
+  `0001_geotech_init.sql` is the initial schema and is **applied
+  nowhere yet**. `verify_0001.sql` runs it against a throwaway Postgres
+  and asserts 58 checks, including the NS3 regression target — run that,
+  do not review the schema by reading it.
 
 ## Hard rules — do not break these
 
@@ -129,6 +135,14 @@ Inherited from SLAM, and they are not negotiable here either:
 
 - NEVER add external dependencies, a bundler, or a build step.
 - NEVER weaken or bypass RLS. Ask before touching any RLS.
+- **NEVER touch SLAM's Supabase project.** GeoTech has its own. The
+  project `valterra-slam-reentry` (`qdlaaiofcrfkrsujhisg`) is
+  slam-reentry-system's production database — 18 tables, RLS on all of
+  them, live rows including `audit_log`, `gas_readings` and
+  `phase_progress`. It is read-only reconnaissance at most, and only
+  when there is a reason. No migration, no DDL, no seed, no writes.
+  Any other project in the account is likewise off limits unless it was
+  created for this app and named as such.
 - Preserve the offline sync queue on ALL write paths. Writes queue when
   offline and flush when back online — never silently drop.
 - Always escape user input to prevent XSS.
@@ -228,8 +242,9 @@ admin. GeoTech adds:
 - `chief_geologist` — authorise deviations, version limit sets, full read.
 - `mrm_manager` — read and report, signs stopped-end log.
 
-These need an RLS migration on the shared project. Apply it before
-shipping anything that writes with these roles.
+These need an RLS migration on **GeoTech's own** project. Apply it
+before shipping anything that writes with these roles — `migrations/`
+runs before app code, always.
 
 ### Accounts and sign-in
 
@@ -433,6 +448,36 @@ Face photos are stored inline as data URLs today. That is fine for a
 device store and wrong for Postgres — when the Supabase path is built,
 they belong in Storage with the row holding a reference.
 
+### migrations/0001 — where the app's promises become guarantees
+
+Written, verified against a real Postgres 16, **applied to no project**.
+It exists because three rules that `index.html` can only ask for
+politely are cheap to make structural:
+
+- **"Never overwrite an observation" (§9.1).** The capture tables have
+  an INSERT policy and a SELECT policy and nothing else. No UPDATE
+  policy, no DELETE policy, and `update`/`delete` revoked from
+  `authenticated` outright so the refusal is an error rather than a
+  silent "0 rows". That holds against the Chief Geologist too — the
+  suite checks it. A correction is a new row.
+- **The figures are derived, not submitted.** `offset_set_stats` and
+  `offset_round_stats` compute every mean and breach count from the
+  stations and the row's own snapshotted limits. The handset's numbers
+  land in `reported_stats` and are never read as truth;
+  `offset_stat_drift` surfaces any disagreement rather than hiding it.
+  The suite pins these to the NS3 sheet: 245.33 / −134.5 / 379.83 /
+  95.33 / 34.5 and 3.80 m to management, server-side.
+- **Section scoping is RLS,** not the UI mirror. A 14 South technician
+  cannot read 16 North's stations even through the views
+  (`security_invoker = on`), cannot write a row attributed to anyone
+  else, and cannot author a limit set at all.
+
+The standard also lands as constraints: F/W negative, no station zero,
+rounds at 2 m and 5 m only, sections exactly the two, interval fixed at
+1 m, a station past the cut requires a cause, and a face log cannot be
+written with `area_safe` false or no named miner. A bad row is
+unwritable rather than merely discouraged.
+
 ## Open decisions — blocking full spec
 
 Do not silently resolve these. Ask.
@@ -484,10 +529,15 @@ Opened by the sign-in rework:
     every record they then create is signed with it (§9.1). The mine
     may want accounts provisioned by MRM instead, with the person only
     setting a password. Built self-serve because that is what was
-    asked; one function changes it.
+    asked; one function changes it. **`migrations/0001` takes the
+    provisioned side** — `profiles` has no INSERT policy and no INSERT
+    privilege, so self-serve registration cannot work against that
+    schema. One of the two has to move; this needs the ruling before
+    either does.
 19. **Role provisioning.** Self-declared today and recorded as such.
-    Comes from the RLS migration in production — decide who grants
-    `chief_geologist` and how.
+    In `migrations/0001` role and section are server-side columns on
+    `profiles` with no self-write path, which is the right shape but
+    leaves the question open: who grants `chief_geologist`, and how.
 20. **Password policy.** 10 characters minimum, no composition rules,
     5 attempts then a 15-minute lockout. DERIVED — no Unki policy was
     supplied. Confirm against the mine's IT standard.
@@ -541,6 +591,15 @@ Opened by the dashboard:
 33. **No shift or date filter.** It shows everything in the store. Once
     there is more than a shift or two of data it needs a range control and
     grouping by shift / section / technician.
+
+Opened by the migration:
+
+34. **`shift_type` has no source.** CLAUDE.md fixes shifts as A / B / C
+    (6-on/3-off) and the schema has the column, but the field app
+    hardcodes `shiftName:'Morning'` and never asks which of the three it
+    is. Either the app collects it or the column goes. Do not backfill a
+    guess — a wrong shift attribution on a statutory record is worse
+    than a blank one.
 
 ## When making changes
 
