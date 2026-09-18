@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>UNKI GEOTECH — Management Review</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   UNKI GEOTECH · MANAGEMENT REVIEW
+
+   What management sees after the Geological Technician has captured a
+   shift. Read-only by construction: this file opens the store and never
+   writes to it. Corrections are new rows made in the field app, never
+   edits made here (§9.1 — never overwrite an observation).
+
+   Same design language as index.html, but this is a desk screen rather
+   than a gloved tablet at a face, so it carries more per screen.
+
+   ── CHART COLOUR, VALIDATED NOT EYEBALLED ──────────────────────
+   Run against scripts/validate_palette.js on the card surface
+   #1A170F in dark mode:
+
+   · Diverging pair (the vs-design-cut chart — polarity, not identity):
+       over  #E0553A   under #3F9C63   midpoint: neutral gray
+     Lightness band PASS · chroma floor PASS · contrast PASS ·
+     normal-vision ΔE 26.5 PASS · CVD ΔE 6.6 deutan = WARN.
+     A red/green pair always will warn. The WARN is legal ONLY with
+     secondary encoding, so every bar carries a signed value label AND
+     the words OVER CUT / WITHIN CUT. Colour never carries the meaning
+     alone — which is the same rule the field app already follows.
+
+   · Magnitude hue (the cause chart — nominal categories, so ONE hue,
+     never a value ramp): #B08A1E. All checks PASS.
+
+   The app's raw brand yellow #FFC61A (L 0.854) and green #5FB87A
+   (L 0.711) sit outside the dark lightness band and are NOT used as
+   chart marks. They stay as UI accents, where the band does not apply.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root{
+  --bg:#100E0A; --panel:#1A170F; --raised:#241F16; --sunk:#0A0906;
+  --line:#3A3325; --line-soft:#2A2418;
+
+  --paint:#FFC61A;
+  --paint-dim:#5C4707;
+  --rust:#E04A2F;
+  --rust-dim:#4A1C12;
+  --grow:#5FB87A;
+  --grow-dim:#16301F;
+  --teal:#54A296;
+  --teal-dim:#14282B;
+
+  --text:#F2ECDD; --dim:#B0A692; --faint:#756C58;
+
+  /* Validated chart marks — see the header block. */
+  --c-over:#E0553A;
+  --c-under:#3F9C63;
+  --c-mid:#756C58;
+  --c-mag:#B08A1E;
+
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+
+  --s1:8px; --s2:14px; --s3:22px; --s4:30px; --s5:46px;
+  --ease:cubic-bezier(.2,.8,.25,1);
+  --t-fast:110ms; --t:170ms; --t-slow:260ms;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font-family:var(--sans);font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;}
+button{font:inherit;cursor:pointer;}
+:focus-visible{outline:3px solid var(--paint);outline-offset:2px;border-radius:4px;}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth;}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;}}
+
+/* ── shell ────────────────────────────────────────────────── */
+header.top{background:linear-gradient(180deg,var(--raised),var(--panel));
+  border-bottom:1px solid var(--line);padding:20px 28px;
+  display:flex;align-items:baseline;gap:20px;flex-wrap:wrap;}
+.mark{font-weight:800;font-size:20px;letter-spacing:.06em;color:var(--paint);
+  text-transform:uppercase;line-height:1;}
+.mark em{font-style:normal;color:var(--dim);font-weight:500;}
+.topmeta{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--faint);
+  display:flex;gap:18px;flex-wrap:wrap;align-items:center;}
+.ro{border:1px solid var(--teal);color:var(--teal);background:var(--teal-dim);
+  border-radius:5px;padding:5px 10px;font-size:11.5px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:600;}
+
+main{max-width:1240px;margin:0 auto;padding:var(--s5) 28px 120px;}
+
+.eyebrow{font-family:var(--mono);font-size:13px;color:var(--teal);text-transform:uppercase;
+  letter-spacing:.11em;margin-bottom:10px;}
+h1{font-size:31px;margin:0 0 10px;font-weight:800;letter-spacing:-.015em;line-height:1.15;}
+h2{font-size:21px;margin:0 0 6px;font-weight:700;letter-spacing:-.01em;}
+p.sub{color:var(--dim);font-size:16px;margin:0 0 var(--s5);max-width:66ch;line-height:1.6;}
+section{margin-bottom:var(--s5);}
+.sechead{margin-bottom:var(--s3);}
+.sechead p{color:var(--dim);font-size:15px;margin:0;max-width:70ch;}
+.clause{font-family:var(--mono);font-size:12.5px;color:var(--faint);letter-spacing:.03em;}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:26px var(--s3);margin-bottom:var(--s4);}
+
+/* ── hero + KPI ───────────────────────────────────────────── */
+.hero{display:flex;gap:var(--s5);flex-wrap:wrap;align-items:flex-end;
+  padding:28px var(--s3);background:var(--panel);
+  border:1px solid var(--line);border-left:4px solid var(--paint);
+  border-radius:10px;margin-bottom:var(--s4);}
+.hero .lbl{font-family:var(--mono);font-size:12px;color:var(--faint);
+  text-transform:uppercase;letter-spacing:.11em;margin-bottom:12px;}
+.hero .fig{font-family:var(--mono);font-size:58px;font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em;}
+.hero .unit{font-size:24px;color:var(--dim);font-weight:500;}
+.hero .against{font-size:15px;color:var(--dim);margin-top:14px;line-height:1.6;}
+.hero .against b{color:var(--text);}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));
+  gap:var(--s2);margin-bottom:var(--s4);}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:20px 18px;}
+.kpi.hot{border-color:var(--rust);}
+.kpi .n{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1.1;
+  font-variant-numeric:tabular-nums;color:var(--paint);}
+.kpi.hot .n{color:var(--rust);}
+.kpi .l{font-family:var(--mono);font-size:12.5px;color:var(--faint);text-transform:uppercase;
+  letter-spacing:.06em;margin-top:10px;line-height:1.45;}
+
+/* ── charts ───────────────────────────────────────────────── */
+figure{margin:0;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:26px var(--s3);}
+figcaption{font-family:var(--mono);font-size:12.5px;color:var(--faint);
+  line-height:1.6;margin-top:var(--s3);padding-top:var(--s2);
+  border-top:1px solid var(--line-soft);}
+.chart{width:100%;overflow-x:auto;}
+.chart svg{display:block;}
+.legend{display:flex;gap:var(--s3);flex-wrap:wrap;margin-bottom:var(--s3);
+  font-family:var(--mono);font-size:12.5px;color:var(--dim);}
+.legend span{display:flex;align-items:center;gap:8px;}
+.legend i{width:14px;height:14px;border-radius:3px;display:inline-block;}
+/* The .hit rects sit above the marks, so :hover on a bar never fires —
+   the emphasis class is applied from the hit rect in JS. */
+.bar{transition:opacity var(--t-fast) var(--ease);}
+svg.dim .bar{opacity:.45;}
+svg.dim .bar.on{opacity:1;stroke:#1A170F;stroke-width:2;}
+.hit{fill:transparent;cursor:pointer;}
+
+#tip{position:fixed;z-index:60;pointer-events:none;opacity:0;
+  background:var(--raised);border:1px solid var(--line);border-radius:8px;
+  padding:12px 14px;font-family:var(--mono);font-size:13px;line-height:1.6;
+  color:var(--text);box-shadow:0 8px 28px rgba(0,0,0,.6);max-width:300px;
+  transition:opacity var(--t-fast) var(--ease);}
+#tip.on{opacity:1;}
+#tip b{color:var(--paint);}
+
+/* ── tables ───────────────────────────────────────────────── */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:9px;}
+table{width:100%;border-collapse:collapse;font-size:15px;}
+th{background:var(--raised);font-family:var(--mono);font-size:12px;color:var(--faint);
+  text-transform:uppercase;letter-spacing:.07em;text-align:left;padding:15px 16px;
+  font-weight:600;white-space:nowrap;}
+td{padding:15px 16px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums;
+  vertical-align:top;}
+td.n{font-family:var(--mono);text-align:right;white-space:nowrap;}
+tr.breach td{background:#2A130E;}
+tbody tr{transition:background-color var(--t-fast) var(--ease);}
+tbody tr.row:hover{background:var(--raised);cursor:pointer;}
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11.5px;
+  text-transform:uppercase;letter-spacing:.06em;padding:4px 9px;border-radius:5px;
+  font-weight:600;white-space:nowrap;}
+.pill.over{background:var(--rust-dim);color:#FFB9A8;border:1px solid var(--rust);}
+.pill.within{background:var(--grow-dim);color:var(--grow);border:1px solid var(--grow);}
+.pill.flag{background:#33280A;color:var(--paint);border:1px solid var(--paint-dim);}
+.pill.sync{background:var(--grow-dim);color:var(--grow);border:1px solid var(--grow);}
+.pill.pend{background:#33280A;color:var(--paint);border:1px solid var(--paint-dim);}
+
+.empty{text-align:center;padding:64px var(--s3);color:var(--faint);font-size:16px;
+  font-family:var(--mono);border:1.5px dashed var(--line);border-radius:10px;
+  line-height:1.8;}
+
+.note{border-radius:9px;padding:19px var(--s3);font-size:15.5px;line-height:1.6;
+  margin-bottom:var(--s4);display:flex;gap:16px;align-items:flex-start;}
+.note .mk{font-family:var(--mono);font-size:20px;line-height:1.1;flex:none;font-weight:700;}
+.note.info{border:1.5px solid var(--teal);background:var(--teal-dim);color:#B4DDD6;}
+.note.info .mk{color:var(--teal);}
+.note.warn{border:1.5px solid var(--paint);background:#33280A;color:#FFE0A0;}
+.note.warn .mk{color:var(--paint);}
+.note b{color:#fff;}
+
+/* ── face detail ──────────────────────────────────────────── */
+.detail{border:1px solid var(--paint);border-radius:10px;background:var(--sunk);
+  padding:26px var(--s3);margin-top:var(--s3);}
+.detail h3{font-family:var(--mono);font-size:14px;color:var(--paint);text-transform:uppercase;
+  letter-spacing:.1em;margin:0 0 var(--s3);font-weight:600;}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  gap:var(--s3);margin-bottom:var(--s4);}
+.meta dt{font-family:var(--mono);font-size:11px;color:var(--faint);
+  letter-spacing:.11em;text-transform:uppercase;margin-bottom:6px;}
+.meta dd{margin:0;font-family:var(--mono);font-size:14px;color:var(--text);line-height:1.5;}
+.rnd{font-family:var(--mono);font-size:13px;color:var(--paint);margin:var(--s4) 0 12px;
+  letter-spacing:.06em;text-transform:uppercase;}
+.facephoto{display:block;max-width:420px;width:100%;height:auto;margin-top:var(--s2);
+  border:1px solid var(--line);border-radius:8px;}
+.closebtn{background:none;border:1.5px solid var(--line);color:var(--dim);
+  border-radius:8px;padding:12px 20px;font-family:var(--mono);font-size:13px;
+  text-transform:uppercase;letter-spacing:.06em;margin-top:var(--s3);}
+
+.foot{margin-top:var(--s5);padding-top:var(--s3);border-top:1px solid var(--line);
+  font-family:var(--mono);font-size:12.5px;color:var(--faint);line-height:1.8;max-width:80ch;}
+</style>
+</head>
+<body>
+<div id="tip" role="status" aria-live="polite"></div>
+<header class="top">
+  <div class="mark">Unki <em>GeoTech</em></div>
+  <div class="topmeta">
+    <span class="ro">Read only</span>
+    <span id="asof"></span>
+  </div>
+</header>
+<main id="app"><div class="empty">Reading the shift store…</div></main>
+
+<script>
+/* ═══ 1 · READ-ONLY STORE ACCESS ══════════════════════════════════════
+
+   Same prefix and key shape as index.html. There is deliberately no
+   put() in this file: management reviews the record, it does not edit
+   it. A correction is a new row captured in the field app (§9.1).
+
+   Today this reads the device store, so it shows what is on THIS
+   device. When the Supabase path is built, replace loadAll() with a
+   query and nothing below it changes.                                */
+
+const PFX = 'unkigeo';
+const KINDS = ['faceLog','offsetSet','structure','shift'];
+
+const HAS_STORE = !!(window.storage && typeof window.storage.get === 'function');
+
+async function getKey(key){
+  if(!HAS_STORE) return null;
+  try{ const r = await window.storage.get(PFX+':'+key, false);
+       return r && r.value ? JSON.parse(r.value) : null; }catch(e){ return null; }
+}
+async function listKind(kind){
+  if(!HAS_STORE) return [];
+  try{
+    const list = await window.storage.list(PFX+':'+kind+':', false);
+    const out = [];
+    if(list && list.keys) for(const k of list.keys){
+      try{ const r = await window.storage.get(k, false);
+           if(r && r.value) out.push(JSON.parse(r.value)); }catch(e){}
+    }
+    out.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+    return out;
+  }catch(e){ return []; }
+}
+
+const DATA = { faceLog:[], offsetSet:[], structure:[], shift:[] };
+async function loadAll(){
+  for(const k of KINDS) DATA[k] = await listKind(k);
+}
+
+/* ═══ 2 · HELPERS ═════════════════════════════════════════════════════ */
+
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtTS = iso => !iso ? '—' : new Date(iso).toLocaleDateString(undefined,
+  {day:'2-digit',month:'short'}) + ' ' + new Date(iso).toLocaleTimeString(undefined,
+  {hour:'2-digit',minute:'2-digit'});
+
+/* cm → m. The ONLY conversion in this file, same boundary rule as the
+   field app: the technician works in centimetres, management reads
+   metres. */
+const toM = cm => cm==null ? null : cm/100;
+const m2 = cm => cm==null ? '—' : toM(cm).toFixed(2);
+const cm1 = v => v==null ? '—' : (Math.round(v*100)/100).toFixed(2);
+const signed = v => v==null ? '—' : (v>=0?'+':'') + cm1(v);
+
+/* Every figure below comes from the stats the field app computed and
+   stored against the snapshotted limits. Nothing is recomputed here
+   with today's limits — a limit revised later must not restate what an
+   old face was measured against. */
+const faces = () => DATA.offsetSet.filter(e => e && e.stats && Array.isArray(e.rounds));
+const faceDelta = e => e.stats.meanHeight==null ? null : e.stats.meanHeight - e.stats.planned;
+
+/* ═══ 3 · CHARTS ══════════════════════════════════════════════════════
+
+   Two charts, each picked by the data's job:
+
+   · "How far off the cut is each face" is POLARITY — above or below a
+     baseline — so it is a diverging bar on a zero line, two opposite
+     hues with a neutral midpoint. One series, so no legend box; the
+     title names it. Every bar is directly labelled and carries the
+     words OVER CUT / WITHIN CUT, which is the secondary encoding the
+     red/green CVD warning obliges.
+
+   · "What is driving over-break" is MAGNITUDE across nominal
+     categories, so it is one hue for every bar — never a value ramp,
+     which would spend the identity channel re-encoding bar length. */
+
+/* The validated marks as literals. CSS var() does NOT resolve inside an
+   SVG presentation attribute, so the hexes live here and the matching
+   --c-* tokens are used only in real CSS (legend swatches, text). */
+const CHART_OVER='#E0553A', CHART_UNDER='#3F9C63', CHART_MAG='#B08A1E';
+
+let TIP = null;
+function tipOn(html, ev){
+  TIP = TIP || document.getElementById('tip');
+  TIP.innerHTML = html;
+  TIP.classList.add('on');
+  const pad = 16;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  const r = TIP.getBoundingClientRect();
+  if(x + r.width  > window.innerWidth  - 8) x = ev.clientX - r.width  - pad;
+  if(y + r.height > window.innerHeight - 8) y = ev.clientY - r.height - pad;
+  TIP.style.left = Math.max(8,x)+'px';
+  TIP.style.top  = Math.max(8,y)+'px';
+}
+function tipOff(){ if(TIP) TIP.classList.remove('on'); }
+
+/* Diverging bars: mean mining height minus design cut, per face. */
+function chartVsCut(rows){
+  if(!rows.length) return '<div class="empty">No offset records yet</div>';
+  const rowH = 46, padT = 30, padB = 34, labelW = 156, valW = 150;
+  const H = padT + rows.length*rowH + padB;
+  const W = 980, plotL = labelW, plotR = W - valW;
+  const span = plotR - plotL;
+  const worst = Math.max(30, ...rows.map(r => Math.abs(r.delta==null?0:r.delta)));
+  const zero = plotL + span/2;
+  const half = span/2 - 10;
+  const x = v => zero + (v/worst)*half;
+
+  const ticks = [-worst, -worst/2, 0, worst/2, worst];
+  return `
+  <div class="chart">
+  <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+    aria-label="Mean mining height against design cut for each face, in centimetres. Bars right of the zero line are over the cut.">
+    ${ticks.map(t=>`
+      <line x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${padT-10}" y2="${H-padB+4}"
+        stroke="#2A2418" stroke-width="1"/>
+      <text x="${x(t).toFixed(1)}" y="${H-padB+22}" text-anchor="middle" font-size="12"
+        fill="#756C58" font-family="monospace">${t===0?'0':signed(t)}</text>`).join('')}
+    <line x1="${zero}" x2="${zero}" y1="${padT-10}" y2="${H-padB+4}" stroke="#756C58" stroke-width="2"/>
+    <text x="${zero}" y="${padT-16}" text-anchor="middle" font-size="11.5" fill="#756C58"
+      font-family="monospace" letter-spacing="1.4">DESIGN CUT</text>
+    ${rows.map((r,i)=>{
+      const y = padT + i*rowH;
+      const cy = y + rowH/2;
+      const d = r.delta;
+      if(d==null) return '';
+      const over = d > 0;
+      const bx = over ? zero : x(d);
+      const bw = Math.max(3, Math.abs(x(d) - zero));
+      const col = over ? CHART_OVER : CHART_UNDER;
+      return `
+      <text x="${plotL-16}" y="${cy+5}" text-anchor="end" font-size="14" fill="#F2ECDD"
+        font-family="monospace">${esc(r.bord)}</text>
+      <rect class="bar" data-b="${i}" x="${bx.toFixed(1)}" y="${(cy-11).toFixed(1)}"
+        width="${bw.toFixed(1)}" height="22" rx="4" fill="${col}"/>
+      <text x="${plotR+14}" y="${cy+5}" font-size="13.5" fill="#F2ECDD" font-family="monospace">
+        ${signed(d)} cm</text>
+      <text x="${plotR+14}" y="${cy+20}" font-size="10.5" fill="${over?'#E0553A':'#3F9C63'}"
+        font-family="monospace" letter-spacing="1">${over?'OVER CUT':'WITHIN CUT'}</text>
+      <rect class="hit" data-face="${esc(r.id)}" data-b="${i}" x="0" y="${y}" width="${W}" height="${rowH}"/>`;
+    }).join('')}
+  </svg></div>`;
+}
+
+/* One hue, sorted by magnitude — nominal causes, so identity is carried
+   by the axis label, not by colour. */
+function chartCauses(counts){
+  const rows = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  if(!rows.length) return '<div class="empty">No over-break recorded — nothing to explain</div>';
+  const rowH = 44, padT = 14, padB = 14, labelW = 330, valW = 64;
+  const W = 980, H = padT + rows.length*rowH + padB;
+  const plotL = labelW, plotR = W - valW;
+  const max = Math.max(...rows.map(r=>r[1]));
+  return `
+  <div class="chart">
+  <svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+    aria-label="Number of over-break stations attributed to each recorded cause.">
+    ${rows.map(([cause,n],i)=>{
+      const y = padT + i*rowH, cy = y + rowH/2;
+      const bw = Math.max(3, (n/max) * (plotR-plotL));
+      return `
+      <text x="${plotL-16}" y="${cy+5}" text-anchor="end" font-size="13.5" fill="#F2ECDD">${esc(cause)}</text>
+      <rect class="bar" data-b="${i}" x="${plotL}" y="${(cy-11).toFixed(1)}"
+        width="${bw.toFixed(1)}" height="22" rx="4" fill="${CHART_MAG}"/>
+      <text x="${(plotL+bw+12).toFixed(1)}" y="${cy+5}" font-size="13.5" fill="#F2ECDD"
+        font-family="monospace">${n}</text>
+      <rect class="hit" data-cause="${esc(cause)}" data-n="${n}" data-b="${i}"
+        x="0" y="${y}" width="${W}" height="${rowH}"/>`;
+    }).join('')}
+  </svg></div>`;
+}
+
+/* ═══ 4 · THE PAGE ════════════════════════════════════════════════════ */
+
+let OPEN = null;   // id of the face whose detail is expanded
+
+function render(){
+  const app = document.getElementById('app');
+  const F = faces();
+  const logs = DATA.faceLog;
+
+  document.getElementById('asof').textContent =
+    'Read ' + new Date().toLocaleString(undefined,
+      {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+
+  if(!HAS_STORE){
+    app.innerHTML = `
+    <div class="eyebrow">Management review</div>
+    <h1>No store available</h1>
+    <div class="note warn"><span class="mk">◆</span><div>
+      This page reads the same device store the field app writes to, and the host has
+      not provided one. Open it the same way the field app is opened — as the installed
+      PWA or over https, on the device that captured the shift.
+    </div></div>`;
+    return;
+  }
+
+  if(!F.length && !logs.length){
+    app.innerHTML = `
+    <div class="eyebrow">Management review</div>
+    <h1>Nothing captured yet</h1>
+    <p class="sub">This page shows a shift once a Geological Technician has recorded it.</p>
+    <div class="empty">No face logs and no offset records in this store.<br>
+      Records appear here as soon as a shift is captured on this device.</div>
+    ${footnote()}`;
+    return;
+  }
+
+  /* Headline figures — all from stored stats. */
+  const withH   = F.filter(e=>e.stats.meanHeight!=null);
+  const meanH   = withH.length ? withH.reduce((a,e)=>a+e.stats.meanHeight,0)/withH.length : null;
+  const meanCut = withH.length ? withH.reduce((a,e)=>a+e.stats.planned,0)/withH.length : null;
+  const delta   = (meanH!=null && meanCut!=null) ? meanH-meanCut : null;
+
+  const overFaces    = F.filter(e => faceDelta(e)!=null && faceDelta(e) > 0);
+  const flaggedFaces = F.filter(e => e.stats.heightFlag);
+  const sampleFlag   = logs.filter(e => e.sampleFlagged);
+  const pending      = KINDS.reduce((n,k)=> n + DATA[k].filter(e=>!e.synced).length, 0);
+
+  const hwB = F.reduce((a,e)=>a+e.stats.hwB,0);
+  const fwB = F.reduce((a,e)=>a+e.stats.fwB,0);
+
+  /* Cause counts across every round of every face. */
+  const causes = {};
+  F.forEach(e => e.rounds.forEach(r => r.stations.forEach(s => {
+    const hb = s.hw!=null && s.hw > e.hwLimit, fb = s.fw!=null && s.fw < e.fwLimit;
+    if((hb||fb) && s.cause) causes[s.cause] = (causes[s.cause]||0) + 1;
+  })));
+
+  const rows = F.map(e => ({
+    id:e.id, bord:(e.place&&e.place.bord)||'—', delta:faceDelta(e), e
+  })).filter(r=>r.delta!=null)
+     .sort((a,b)=> b.delta - a.delta);
+
+  app.innerHTML = `
+  <div class="eyebrow">Management review</div>
+  <h1>Face measurement, this store</h1>
+  <p class="sub">Everything a Geological Technician has captured on this device, against the
+    design cut each face was actually judged by. Figures for management are in metres;
+    the measurements underneath them stay in centimetres, as recorded.</p>
+
+  <div class="hero">
+    <div>
+      <div class="lbl">Mean mining height</div>
+      <div class="fig">${meanH!=null?m2(meanH):'—'}<span class="unit"> m</span></div>
+      <div class="against">
+        Against a mean design cut of <b>${meanCut!=null?m2(meanCut):'—'} m</b><br>
+        ${delta!=null?`<b style="color:${delta>0?'var(--c-over)':'var(--c-under)'}">
+          ${signed(delta)} cm ${delta>0?'over':'under'} cut</b> across
+          ${withH.length} face${withH.length===1?'':'s'}`:'No measured faces yet'}
+      </div>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">${F.length}</div><div class="l">Faces measured</div></div>
+    <div class="kpi ${overFaces.length?'hot':''}"><div class="n">${overFaces.length}</div>
+      <div class="l">Over design cut</div></div>
+    <div class="kpi ${flaggedFaces.length?'hot':''}"><div class="n">${flaggedFaces.length}</div>
+      <div class="l">Above 200 cm flag</div></div>
+    <div class="kpi ${hwB?'hot':''}"><div class="n">${hwB}</div>
+      <div class="l">H/W over-break stations</div></div>
+    <div class="kpi ${fwB?'hot':''}"><div class="n">${fwB}</div>
+      <div class="l">F/W over-break stations</div></div>
+    <div class="kpi ${sampleFlag.length?'hot':''}"><div class="n">${sampleFlag.length}</div>
+      <div class="l">Flagged for sampling</div></div>
+    <div class="kpi ${pending?'hot':''}"><div class="n">${pending}</div>
+      <div class="l">Awaiting sync</div></div>
+  </div>
+
+  <section>
+    <div class="sechead">
+      <h2>How far each face sits off its design cut</h2>
+      <p>Mean mining height minus the design cut, in centimetres, worst first. Right of the
+        line is over-break — rock taken that was not planned.
+        <span class="clause">STD-201 §9.8</span></p>
+    </div>
+    <figure>
+      <div class="legend">
+        <span><i style="background:var(--c-over)"></i>Over cut</span>
+        <span><i style="background:var(--c-under)"></i>Within cut</span>
+        <span><i style="background:var(--c-mid)"></i>Design cut (zero)</span>
+      </div>
+      ${chartVsCut(rows)}
+      <figcaption>Each face is judged against the limit set snapshotted onto its own record,
+        not against today's limits. Colour is never the only signal — every bar carries its
+        signed value and the words OVER CUT or WITHIN CUT.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>What is driving the over-break</h2>
+      <p>Every station past the cut, counted by the cause the technician recorded at the face.
+        This is the record that goes back to the planning meeting.</p>
+    </div>
+    <figure>
+      ${chartCauses(causes)}
+      <figcaption>One station can be counted once. Causes are chosen from a fixed list at the
+        face; a station over the cut cannot be saved without one.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sechead">
+      <h2>Every face</h2>
+      <p>The table behind the charts. Select a row for the station-by-station record,
+        both rounds, and who signed it.</p>
+    </div>
+    <div class="tblwrap"><table>
+      <thead><tr>
+        <th>Face</th><th>Heading</th><th class="n">Rounds</th><th class="n">Offsets</th>
+        <th class="n">Mean height</th><th class="n">Design cut</th><th class="n">Vs cut</th>
+        <th class="n">Over-break</th><th>Status</th><th>Recorded</th>
+      </tr></thead>
+      <tbody>${F.map(e=>{
+        const d = faceDelta(e);
+        const over = d!=null && d>0;
+        return `<tr class="row ${over?'breach':''}" data-face="${esc(e.id)}" tabindex="0">
+          <td><b>${esc((e.place&&e.place.bord)||'—')}</b></td>
+          <td>${esc(e.limitLabel||'—')}</td>
+          <td class="n">${e.rounds.length}</td>
+          <td class="n">${e.rounds[0]?e.rounds[0].stations.length:'—'}</td>
+          <td class="n">${m2(e.stats.meanHeight)} m<br>
+            <span style="color:var(--faint);font-size:12.5px">${cm1(e.stats.meanHeight)} cm</span></td>
+          <td class="n">${m2(e.stats.planned)} m</td>
+          <td class="n" style="color:${over?'var(--c-over)':'var(--c-under)'}">${signed(d)} cm</td>
+          <td class="n">${e.stats.hwB} H/W<br>
+            <span style="color:var(--faint);font-size:12.5px">${e.stats.fwB} F/W</span></td>
+          <td><span class="pill ${over?'over':'within'}">${over?'Over cut':'Within cut'}</span>
+            ${e.stats.heightFlag?'<br><span class="pill flag" style="margin-top:6px">Above 200 cm</span>':''}</td>
+          <td>${esc(e.by||'—')}<br>
+            <span style="color:var(--faint);font-size:12.5px">${fmtTS(e.ts)}</span><br>
+            <span class="pill ${e.synced?'sync':'pend'}" style="margin-top:6px">${e.synced?'Synced':'On device'}</span></td>
+        </tr>`;}).join('')}
+      </tbody>
+    </table></div>
+    <div id="detail"></div>
+  </section>
+
+  ${logs.length?`
+  <section>
+    <div class="sechead">
+      <h2>Face logs and acknowledgement</h2>
+      <p>Who declared each area safe before work started, and which faces the 9 m channel
+        rule flagged for sampling. <span class="clause">§9.1, §9.2</span></p>
+    </div>
+    <div class="tblwrap"><table>
+      <thead><tr>
+        <th>Face</th><th class="n">Face length</th><th class="n">Channel to face</th>
+        <th>TARP</th><th>Area made safe by</th><th>Team on face</th><th>Recorded</th>
+      </tr></thead>
+      <tbody>${logs.map(e=>`
+        <tr class="${e.sampleFlagged?'breach':''}">
+          <td><b>${esc(e.bord||'—')}</b>${e.channelId?'<br><span style="color:var(--faint);font-size:12.5px">'+esc(e.channelId)+'</span>':''}</td>
+          <td class="n">${e.faceLength!=null?e.faceLength+' m':'—'}</td>
+          <td class="n">${e.distToFace!=null?e.distToFace+' m':'—'}
+            ${e.sampleFlagged?'<br><span class="pill flag" style="margin-top:6px">Sampling</span>':''}</td>
+          <td>${e.tarp?esc(e.tarp):'—'}</td>
+          <td>${e.ack&&e.ack.miner?esc(e.ack.miner):'<span style="color:var(--c-over)">not recorded</span>'}</td>
+          <td style="font-size:13.5px;color:var(--dim)">${e.ack&&e.ack.team&&e.ack.team.length?esc(e.ack.team.join(', ')):'—'}</td>
+          <td>${esc(e.by||'—')}<br>
+            <span style="color:var(--faint);font-size:12.5px">${fmtTS(e.ts)}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </section>`:''}
+
+  ${DATA.structure.length?`
+  <section>
+    <div class="sechead">
+      <h2>Structures within 3 m of the face</h2>
+      <p>Geological structures and joints, with the marked-up face photograph where one was
+        taken. <span class="clause">§9.3, §9.6.3</span></p>
+    </div>
+    ${DATA.structure.map(s=>`
+      <div class="card">
+        <div class="meta">
+          <div><dt>Type</dt><dd>${esc(s.type)}</dd></div>
+          <div><dt>Strike / dip</dt><dd>${s.strike??'—'}° / ${s.dip??'—'}° ${esc(s.dipDir||'')}</dd></div>
+          <div><dt>Width</dt><dd>${s.width??'—'} m</dd></div>
+          <div><dt>From face</dt><dd>${s.distFromFace??'—'} m</dd></div>
+          <div><dt>BMSZ displacement</dt><dd>${s.displacement??'—'} m</dd></div>
+          <div><dt>Confidence</dt><dd>${esc(s.confidence||'—')}</dd></div>
+          <div><dt>Recorded</dt><dd>${esc(s.by||'—')} · ${fmtTS(s.ts)}</dd></div>
+        </div>
+        ${s.note?`<p style="color:var(--dim);margin:0 0 var(--s2)">${esc(s.note)}</p>`:''}
+        ${s.photo?`<img class="facephoto" src="${s.photo}"
+          alt="Marked-up face photograph for ${esc(s.type)}">`:''}
+      </div>`).join('')}
+  </section>`:''}
+
+  ${footnote()}`;
+
+  wire();
+}
+
+function footnote(){
+  return `<div class="foot">
+    Read-only. Corrections are new rows captured in the field app, never edits made here —
+    what the technician measured and what a geologist later interprets are separate values,
+    both retained, both attributed (§9.1).<br>
+    Figures are the ones the field app computed at save, against the limit set snapshotted
+    onto each record. Nothing on this page is a compliance figure until a server re-derives
+    it from the stations.<br>
+    This app is a data-capture and information tool. It does not replace mine safety
+    procedures, ground control, survey standards or competent-person interpretation.
+  </div>`;
+}
+
+function faceDetail(e){
+  const d = faceDelta(e);
+  return `<div class="detail">
+    <h3>${esc((e.place&&e.place.bord)||'Face')} — station record</h3>
+    <div class="meta">
+      <div><dt>Heading type</dt><dd>${esc(e.limitLabel||'—')}</dd></div>
+      <div><dt>Limits applied</dt><dd>${e.hwLimit} / ${e.fwLimit} cm</dd></div>
+      <div><dt>Limit set</dt><dd>${esc(e.limitVersion||'—')}</dd></div>
+      <div><dt>Face length</dt><dd>${e.faceLength??'—'} m</dd></div>
+      <div><dt>Mean mining height</dt><dd>${cm1(e.stats.meanHeight)} cm · ${m2(e.stats.meanHeight)} m</dd></div>
+      <div><dt>Vs design cut</dt><dd style="color:${d>0?'var(--c-over)':'var(--c-under)'}">${signed(d)} cm</dd></div>
+      <div><dt>Mean H/W excess</dt><dd>${e.stats.hwB?cm1(e.stats.meanOver)+' cm':'—'}</dd></div>
+      <div><dt>Mean F/W excess</dt><dd>${e.stats.fwB?cm1(e.stats.meanOverFW)+' cm':'—'}</dd></div>
+      <div><dt>Recorded by</dt><dd>${esc(e.by||'—')} ${esc(e.byNo||'')}</dd></div>
+      <div><dt>At</dt><dd>${fmtTS(e.ts)}</dd></div>
+    </div>
+    ${e.rounds.map(r=>`
+      <div class="rnd">${esc(r.label)} — mean height ${cm1(r.stats.meanHeight)} cm ·
+        ${r.stats.hwB} H/W and ${r.stats.fwB} F/W over-break</div>
+      <div class="tblwrap"><table>
+        <thead><tr><th class="n">Dist m</th><th class="n">H/W cm</th><th class="n">F/W cm</th>
+          <th class="n">Height cm</th><th class="n">Vs cut</th><th>Status</th><th>Cause</th></tr></thead>
+        <tbody>${r.stations.map(s=>{
+          const hb = s.hw!=null && s.hw>e.hwLimit, fb = s.fw!=null && s.fw<e.fwLimit;
+          const sd = s.height!=null ? s.height-e.stats.planned : null;
+          return `<tr class="${hb||fb?'breach':''}">
+            <td class="n">${s.dist}</td>
+            <td class="n" style="color:${hb?'var(--c-over)':'inherit'}">${s.hw??'—'}</td>
+            <td class="n" style="color:${fb?'var(--c-over)':'inherit'}">${s.fw??'—'}</td>
+            <td class="n">${s.height??'—'}</td>
+            <td class="n" style="color:${sd>0?'var(--c-over)':'var(--c-under)'}">${signed(sd)}</td>
+            <td><span class="pill ${hb||fb?'over':'within'}">${hb||fb?'Over-break':'Within cut'}</span></td>
+            <td style="font-size:13.5px">${esc(s.cause||'')}</td></tr>`;}).join('')}
+        </tbody></table></div>`).join('')}
+    <button class="closebtn" id="closeDetail">Close</button>
+  </div>`;
+}
+
+function openFace(id){
+  const e = faces().find(x=>x.id===id);
+  const box = document.getElementById('detail');
+  if(!e || !box) return;
+  OPEN = id;
+  box.innerHTML = faceDetail(e);
+  const c = document.getElementById('closeDetail');
+  if(c) c.onclick = ()=>{ OPEN=null; box.innerHTML=''; };
+  box.scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+
+/* Emphasis on hover: dim the set, light the one under the pointer. */
+function emphasise(hit, on){
+  const svg = hit.ownerSVGElement;
+  if(!svg) return;
+  svg.classList.toggle('dim', on);
+  const bar = svg.querySelector('.bar[data-b="'+hit.dataset.b+'"]');
+  if(bar) bar.classList.toggle('on', on);
+}
+
+function wire(){
+  document.querySelectorAll('tr.row').forEach(tr=>{
+    tr.onclick = ()=>openFace(tr.dataset.face);
+    tr.onkeydown = ev=>{ if(ev.key==='Enter'||ev.key===' '){ ev.preventDefault(); openFace(tr.dataset.face); } };
+  });
+
+  /* Hover layer — an HTML chart is interactive by default. */
+  document.querySelectorAll('.hit[data-face]').forEach(h=>{
+    const e = faces().find(x=>x.id===h.dataset.face);
+    if(!e) return;
+    const d = faceDelta(e);
+    h.addEventListener('mouseenter', ()=>emphasise(h,true));
+    h.addEventListener('mousemove', ev=>tipOn(
+      `<b>${esc((e.place&&e.place.bord)||'Face')}</b><br>
+       Mean height ${cm1(e.stats.meanHeight)} cm · ${m2(e.stats.meanHeight)} m<br>
+       Design cut ${e.stats.planned} cm<br>
+       ${signed(d)} cm — ${d>0?'over cut':'within cut'}<br>
+       ${e.stats.hwB} H/W · ${e.stats.fwB} F/W over-break`, ev));
+    h.addEventListener('mouseleave', ()=>{ emphasise(h,false); tipOff(); });
+    h.addEventListener('click', ()=>openFace(e.id));
+  });
+  document.querySelectorAll('.hit[data-cause]').forEach(h=>{
+    h.addEventListener('mouseenter', ()=>emphasise(h,true));
+    h.addEventListener('mousemove', ev=>tipOn(
+      `<b>${esc(h.dataset.cause)}</b><br>${h.dataset.n} station(s) past the cut`, ev));
+    h.addEventListener('mouseleave', ()=>{ emphasise(h,false); tipOff(); });
+  });
+}
+
+(async function boot(){
+  await loadAll();
+  render();
+})();
+</script>
+</body>
+</html>

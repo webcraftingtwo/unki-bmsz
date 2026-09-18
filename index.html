@@ -1173,6 +1173,7 @@ function renderPlace(app){
     if(!v('mBord')){ flash('Name the working place',true); return; }
     if(!num(v('mLen'))){ flash('Face length is required — it sets the traverse',true); return; }
     const sec=app.querySelector('#mSection .chip.sel');
+    const wasBord = place ? place.bord : null;
     place = {
       source:'manual',
       level:v('mLevel')||'—', section:sec?sec.dataset.sec:SECTIONS[0], bord:v('mBord'),
@@ -1180,6 +1181,15 @@ function renderPlace(app){
       advance:num(v('mAdv')), peg:v('mPeg'),
       faceLength:num(v('mLen')), faceWidth:num(v('mWid')), faceHeight:num(v('mHgt')),
     };
+    /* MOVING TO A DIFFERENT FACE CLEARS THE ACKNOWLEDGEMENT.
+       "The area was made safe" is a statement about ONE end, made by a
+       named miner who stood at it. Letting it carry to the next bord
+       would open the face log there on the strength of a declaration
+       nobody made about it — a gate bypass, which this app does not
+       have. Correcting the same face keeps it. */
+    if(wasBord !== place.bord){
+      shift.ack = null; ACK = null;
+    }
     await put('place',place); await put('shift:current',shift);
     /* A different face invalidates any part-entered capture state. */
     OS=null; FL=null;

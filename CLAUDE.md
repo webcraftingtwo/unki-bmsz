@@ -118,7 +118,7 @@ notes**, the §7.3 authorisation for the deviations below.
 ## Files
 
 - index.html — field app used by Geological Technicians underground.
-- (planned) review.html — Geologist / Chief Geologist review view.
+- review.html — management / Geologist review dashboard. READ ONLY.
 - vendor/ — mirror SLAM's vendoring. Never re-point at a CDN.
 - sw.js — app shell only. Never intercept Supabase or non-GET.
 - migrations/ — apply BEFORE deploying app code that writes new columns.
@@ -137,7 +137,11 @@ Inherited from SLAM, and they are not negotiable here either:
 Specific to this app:
 
 - **The procedure is a locked gate chain. Never add a bypass.** The
-  chain is: acknowledgement → face log → offsets and structures. The
+  chain is: acknowledgement → face log → offsets and structures.
+  **Moving to a different bord clears the acknowledgement.** "The area was
+  made safe" is a statement about one end by a named miner who stood at it;
+  letting it carry to the next face would open that face's log on a
+  declaration nobody made about it. Correcting the same face keeps it. The
   acknowledgement screen cannot be passed with the area declared not made
   safe or with no miner named; until it is passed the face log is
   unreachable, and until a face log exists offsets and structures are
@@ -261,6 +265,45 @@ nothing else in the file moves:
 | `createAccount()` | `auth.signUp` |
 | `authenticate()` | `auth.signInWithPassword` |
 | `newSession()` | the session auth returns |
+
+## review.html — the management dashboard
+
+What management sees after a technician has captured a shift. It opens the
+same store the field app writes to and **never writes back**: there is no
+`put()` in the file. A correction is a new row captured in the field app,
+never an edit made here (§9.1).
+
+- **Metres for management, centimetres underneath.** Same boundary rule as
+  the field app, through the same `toM()`. The hero figure and the "vs cut"
+  column carry both.
+- **Nothing is recomputed.** Every figure comes from the stats the field app
+  stored against the limit set snapshotted onto that record. A limit revised
+  later must not restate what an old face was judged by.
+- Structure: hero (mean mining height vs design cut) → KPI row → faces
+  ranked against their cut → what is driving the over-break → the table of
+  every face, with a station-level drill-in → acknowledgement audit →
+  structures with their marked-up photos.
+
+### Chart colour is computed, not chosen
+
+Run through the data-viz validator against the card surface `#1A170F` in
+dark mode. Do not eyeball replacements — re-run it.
+
+| Job | Mark | Result |
+|---|---|---|
+| Diverging (over / under cut) | `#E0553A` / `#3F9C63`, neutral gray midpoint | all PASS; CVD ΔE 6.6 deutan = WARN |
+| Magnitude (causes, nominal) | `#B08A1E`, one hue for every bar | all PASS |
+
+The CVD WARN on a red/green pair is unavoidable and is legal **only with
+secondary encoding**, so every bar carries its signed value and the words
+OVER CUT / WITHIN CUT. Colour never carries meaning alone.
+
+The app's brand yellow `#FFC61A` (L 0.854) and green `#5FB87A` (L 0.711)
+fall outside the dark lightness band and are **not** used as chart marks —
+they stay as UI accents, where the band does not apply.
+
+Causes are nominal, so they take **one** hue. Never colour those bars by
+value: it spends the identity channel re-encoding what bar length shows.
 
 ## The offset module — read this before changing it
 
@@ -459,6 +502,16 @@ Opened by REWORK 3:
 31. **Face parameters are self-asserted.** Advance, peg and dimensions
     are typed rather than read from the blast record, so a typo is
     indistinguishable from a measurement. Confirm acceptable.
+
+Opened by the dashboard:
+
+32. **The dashboard reads the device store.** Management is not on the
+    technician's tablet, so today it only shows what was captured on the
+    device it is opened on. It is genuinely useful only once the Supabase
+    path exists — `loadAll()` is the one function that changes.
+33. **No shift or date filter.** It shows everything in the store. Once
+    there is more than a shift or two of data it needs a range control and
+    grouping by shift / section / technician.
 
 ## When making changes
 
