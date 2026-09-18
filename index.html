@@ -677,18 +677,61 @@ function flash(msg,bad){ const f=document.getElementById('flash'); if(!f)return;
 function num(v){ if(v===''||v==null||v==='-') return null; const n=parseFloat(v);
   return isNaN(n)?null:n; }
 
-const HAS_STORE = (typeof window!=='undefined' && window.storage &&
-                  typeof window.storage.set==='function');
-const memStore = {};
+/* ── where records live ───────────────────────────────────────────────
+
+   Three backends, picked once, in order:
+
+   1. window.storage — provided by the host (the installed PWA / the
+      ruggedised tablet shell). Always wins when it exists.
+   2. localStorage — a plain browser, opened from a static server. Same
+      keys, so the field app and review.html see each other's records.
+      This is what makes the dashboard viewable at all outside the host.
+   3. memory — last resort (private window with site data blocked).
+      Works for one sitting and is lost on reload; the app says so on
+      every save rather than pretending the record is safe.
+
+   Key shape is identical across all three: PFX + ':' + kind + ':' + id.
+   Nothing above this block knows or cares which one is in use.        */
+
+const STORE = (function(){
+  const host = (typeof window!=='undefined' && window.storage &&
+                typeof window.storage.set==='function') ? window.storage : null;
+  if(host) return {
+    kind:'host',
+    set:(k,v)=>host.set(k,v,false),
+    get:async k=>{ const r=await host.get(k,false); return r&&r.value?r.value:null; },
+    list:async p=>{ const r=await host.list(p,false); return (r&&r.keys)||[]; },
+  };
+  try{
+    const probe = PFX+':__probe';
+    localStorage.setItem(probe,'1'); localStorage.removeItem(probe);
+    return {
+      kind:'local',
+      set:async(k,v)=>{ localStorage.setItem(k,v); },
+      get:async k=>localStorage.getItem(k),
+      list:async p=>{ const out=[];
+        for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i);
+          if(k && k.indexOf(p)===0) out.push(k); }
+        return out; },
+    };
+  }catch(e){}
+  const mem = {};
+  return {
+    kind:'memory',
+    set:async(k,v)=>{ mem[k]=v; },
+    get:async k=>(k in mem)?mem[k]:null,
+    list:async p=>Object.keys(mem).filter(k=>k.indexOf(p)===0),
+  };
+})();
+const HAS_STORE = STORE.kind !== 'memory';
+
 async function put(key,val){
-  if(!HAS_STORE){ memStore[key]=JSON.stringify(val); return true; }
-  try{ await window.storage.set(PFX+':'+key, JSON.stringify(val), false); return true; }
+  try{ await STORE.set(PFX+':'+key, JSON.stringify(val)); return true; }
   catch(e){ console.error('store',e); return false; }
 }
 async function get(key){
-  if(!HAS_STORE){ const v=memStore[key]; return v?JSON.parse(v):null; }
-  try{ const r=await window.storage.get(PFX+':'+key,false);
-       return r&&r.value?JSON.parse(r.value):null; }catch(e){ return null; }
+  try{ const v = await STORE.get(PFX+':'+key);
+       return v ? JSON.parse(v) : null; }catch(e){ return null; }
 }
 async function saveEntry(kind,data){
   const e = { id:uid(), ts:nowTS(), by:session?session.name:'unknown',
@@ -698,19 +741,22 @@ async function saveEntry(kind,data){
               synced:false, ...data };
   const ok = await put(kind+':'+e.id, e);
   cache[kind].unshift(e);
-  flash(ok?'Saved locally':'Saved to memory — storage unavailable', !ok);
+  /* Never say "saved" when the record only lives until the next reload. */
+  flash(ok && HAS_STORE ? 'Saved to this device'
+        : ok ? 'Held in memory only — will be lost on reload'
+        : 'Not saved — storage unavailable',
+        !(ok && HAS_STORE));
   return e;
 }
 async function updateEntry(kind,e){ await put(kind+':'+e.id, e); }
 
 async function loadAll(){
-  if(!HAS_STORE) return;
   for(const k of KINDS){
     try{
-      const list = await window.storage.list(PFX+':'+k+':', false);
+      const keys = await STORE.list(PFX+':'+k+':');
       const out=[];
-      if(list&&list.keys) for(const key of list.keys){
-        try{ const r=await window.storage.get(key,false); if(r&&r.value) out.push(JSON.parse(r.value)); }catch(e){}
+      for(const key of keys){
+        try{ const v=await STORE.get(key); if(v) out.push(JSON.parse(v)); }catch(e){}
       }
       out.sort((a,b)=> new Date(b.ts)-new Date(a.ts));
       cache[k]=out;

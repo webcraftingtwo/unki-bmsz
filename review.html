@@ -234,21 +234,44 @@ tbody tr.row:hover{background:var(--raised);cursor:pointer;}
 const PFX = 'unkigeo';
 const KINDS = ['faceLog','offsetSet','structure','shift'];
 
-const HAS_STORE = !!(window.storage && typeof window.storage.get === 'function');
+/* Same three backends as the field app, picked in the same order, but
+   read-only: this object has no set(). Whichever one the field app
+   wrote to on this device is the one this reads from. */
+const STORE = (function(){
+  const host = (window.storage && typeof window.storage.get === 'function') ? window.storage : null;
+  if(host) return {
+    kind:'host',
+    get: async k => { const r = await host.get(k, false); return r && r.value ? r.value : null; },
+    list: async p => { const r = await host.list(p, false); return (r && r.keys) || []; },
+  };
+  try{
+    const probe = PFX+':__probe';
+    localStorage.setItem(probe,'1'); localStorage.removeItem(probe);
+    return {
+      kind:'local',
+      get: async k => localStorage.getItem(k),
+      list: async p => { const out=[];
+        for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i);
+          if(k && k.indexOf(p)===0) out.push(k); }
+        return out; },
+    };
+  }catch(e){}
+  return { kind:'none', get: async()=>null, list: async()=>[] };
+})();
+const HAS_STORE = STORE.kind !== 'none';
 
 async function getKey(key){
   if(!HAS_STORE) return null;
-  try{ const r = await window.storage.get(PFX+':'+key, false);
-       return r && r.value ? JSON.parse(r.value) : null; }catch(e){ return null; }
+  try{ const v = await STORE.get(PFX+':'+key);
+       return v ? JSON.parse(v) : null; }catch(e){ return null; }
 }
 async function listKind(kind){
   if(!HAS_STORE) return [];
   try{
-    const list = await window.storage.list(PFX+':'+kind+':', false);
+    const keys = await STORE.list(PFX+':'+kind+':');
     const out = [];
-    if(list && list.keys) for(const k of list.keys){
-      try{ const r = await window.storage.get(k, false);
-           if(r && r.value) out.push(JSON.parse(r.value)); }catch(e){}
+    for(const k of keys){
+      try{ const v = await STORE.get(k); if(v) out.push(JSON.parse(v)); }catch(e){}
     }
     out.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
     return out;

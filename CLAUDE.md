@@ -266,6 +266,35 @@ nothing else in the file moves:
 | `authenticate()` | `auth.signInWithPassword` |
 | `newSession()` | the session auth returns |
 
+## Running it in a browser
+
+    python3 -m http.server 8000     # from the repo root
+    # field app:  http://localhost:8000/index.html
+    # dashboard:  http://localhost:8000/review.html
+
+Serve it — do not open the files with `file://`. Browsers give `file://`
+pages an opaque origin, so the two pages get separate storage and the
+dashboard sees nothing.
+
+### Where records live
+
+Three backends, picked once in this order. Key shape is identical across
+all three (`PFX:kind:id`), and nothing above the storage block knows
+which is in use.
+
+| Backend | When | Persists? |
+|---|---|---|
+| `window.storage` | the host provides it (installed PWA, tablet shell) | yes — always wins |
+| `localStorage` | a plain browser over http | yes, per browser+origin |
+| memory | site data blocked (private window) | **no** — one sitting only |
+
+`STORE.kind` tells you which one is live. In the memory case a save says
+*"Held in memory only — will be lost on reload"* rather than "Saved" —
+never tell a technician a record is safe when it is not.
+
+The dashboard uses the same picker with no `set()`, so whichever backend
+the field app wrote to on that device is the one it reads.
+
 ## review.html — the management dashboard
 
 What management sees after a technician has captured a shift. It opens the
