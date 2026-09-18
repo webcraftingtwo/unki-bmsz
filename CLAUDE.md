@@ -597,6 +597,15 @@ Opened by the dashboard:
     there is more than a shift or two of data it needs a range control and
     grouping by shift / section / technician.
 
+Opened by the migration:
+
+34. **`shift_type` has no source.** CLAUDE.md fixes shifts as A / B / C
+    (6-on/3-off) and the schema has the column, but the field app
+    hardcodes `shiftName:'Morning'` and never asks which of the three it
+    is. Either the app collects it or the column goes. Do not backfill a
+    guess — a wrong shift attribution on a statutory record is worse
+    than a blank one.
+
 Opened by seeding the dashboard:
 
 35. **The 200 cm height flag misfires on decline headings.** It is a flat
@@ -610,15 +619,6 @@ Opened by seeding the dashboard:
     "exactly the 200 cm flag height" — that arithmetic works for bord and
     not for decline. Not changed: the flag is a mine threshold and moving
     it is a §7.3 ruling, not a refactor.
-
-Opened by the migration:
-
-34. **`shift_type` has no source.** CLAUDE.md fixes shifts as A / B / C
-    (6-on/3-off) and the schema has the column, but the field app
-    hardcodes `shiftName:'Morning'` and never asks which of the three it
-    is. Either the app collects it or the column goes. Do not backfill a
-    guess — a wrong shift attribution on a statutory record is worse
-    than a blank one.
 
 ## When making changes
 
