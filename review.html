@@ -177,6 +177,13 @@ tbody tr.row:hover{background:var(--raised);cursor:pointer;}
    figure sitting next to a real one is the worst thing this page could show
    without saying so. */
 .pill.demo{background:#2A140F;color:#FFC9BC;border:1px solid var(--rust);}
+/* The self-diagnosis on an empty page. */
+.diag{width:100%;max-width:560px;border-collapse:collapse;margin:var(--s3) 0;
+  font-family:var(--mono);font-size:13.5px}
+.diag th,.diag td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+.diag th{color:var(--faint);font-weight:600;white-space:nowrap}
+ol.fix{color:var(--dim);line-height:1.7;padding-left:22px;max-width:640px}
+ol.fix b{color:var(--ink)}
 
 .empty{text-align:center;padding:64px var(--s3);color:var(--faint);font-size:16px;
   font-family:var(--mono);border:1.5px dashed var(--line);border-radius:10px;
@@ -283,8 +290,35 @@ async function listKind(kind){
 }
 
 const DATA = { faceLog:[], offsetSet:[], structure:[], shift:[] };
+
+/* Why a raw key count as well as the parsed rows: "the page shows
+   nothing" has several different causes and they need telling apart.
+   No keys at all is a different problem (wrong origin, nothing seeded)
+   from keys that are present but unreadable or incomplete. */
+const RAW = { keys:0, unreadable:0 };
 async function loadAll(){
-  for(const k of KINDS) DATA[k] = await listKind(k);
+  RAW.keys = 0; RAW.unreadable = 0;
+  for(const k of KINDS){
+    DATA[k] = await listKind(k);
+    try{
+      const keys = await STORE.list(PFX+':'+k+':');
+      RAW.keys += keys.length;
+      RAW.unreadable += keys.length - DATA[k].length;
+    }catch(e){}
+  }
+}
+
+/* Everything the page needs to explain itself when it has nothing to
+   draw. Origin matters because localStorage is per-origin: seeding on
+   localhost:8000 and opening the dashboard on 127.0.0.1:8000 are two
+   different stores, which looks exactly like "it didn't work". */
+function diagnostics(){
+  return `<table class="diag">
+    <tr><th>Store backend</th><td>${esc(STORE.kind)}</td></tr>
+    <tr><th>Reading origin</th><td>${esc(location.origin)}</td></tr>
+    <tr><th>Keys under <code>${PFX}:</code></th><td>${RAW.keys}</td></tr>
+    <tr><th>Unreadable or incomplete</th><td>${RAW.unreadable}</td></tr>
+  </table>`;
 }
 
 /* ═══ 2 · HELPERS ═════════════════════════════════════════════════════ */
@@ -447,20 +481,61 @@ function render(){
     <div class="eyebrow">Management review</div>
     <h1>No store available</h1>
     <div class="note warn"><span class="mk">◆</span><div>
-      This page reads the same device store the field app writes to, and the host has
-      not provided one. Open it the same way the field app is opened — as the installed
-      PWA or over https, on the device that captured the shift.
-    </div></div>`;
+      This page reads the same device store the field app writes to, and neither the
+      host nor this browser has given it one. Nothing is wrong with the records —
+      this page simply cannot see any store at all.
+    </div></div>
+    ${diagnostics()}
+    <h2 style="font-size:17px">Most likely, in order</h2>
+    <ol class="fix">
+      <li><b>The page was opened from a file, not served.</b> If the address bar starts
+        <code>file://</code>, browsers give the page an opaque origin and block storage.
+        Serve the folder instead: <code>python3 -m http.server 8000</code>, then open
+        <code>http://localhost:8000/review.html</code>.</li>
+      <li><b>Site data is blocked</b> — a private window, or cookies/storage disabled
+        for this site. Check the browser's site settings.</li>
+    </ol>`;
     return;
   }
 
   if(!F.length && !logs.length){
+    /* Three different situations, and the fix differs for each. */
+    const nothingThere = RAW.keys === 0;
     app.innerHTML = `
     <div class="eyebrow">Management review</div>
-    <h1>Nothing captured yet</h1>
-    <p class="sub">This page shows a shift once a Geological Technician has recorded it.</p>
-    <div class="empty">No face logs and no offset records in this store.<br>
-      Records appear here as soon as a shift is captured on this device.</div>
+    <h1>Nothing to show</h1>
+    <p class="sub">${nothingThere
+      ? `This store is empty — not unreadable, just empty. Nothing has been captured
+         on this origin, or it was captured somewhere else.`
+      : `This store holds <b>${RAW.keys}</b> record key(s), but none of them is a face
+         log or a complete offset set, so there is nothing to draw.`}</p>
+    ${diagnostics()}
+    <h2 style="font-size:17px">Most likely, in order</h2>
+    <ol class="fix">
+      ${nothingThere ? `
+      <li><b>Nothing has been written yet.</b> Either capture a shift in
+        <code>index.html</code>, or — to see this page with data — open
+        <a href="seed-demo.html">seed-demo.html</a> and press
+        <b>Write 10 demo faces</b>. It writes invented records, clearly tagged;
+        this page will say so at the top.</li>
+      <li><b>It was written to a different origin.</b> Storage is per-origin, and
+        <code>http://localhost:8000</code> and <code>http://127.0.0.1:8000</code> are
+        two different stores even though they are the same server. This page is reading
+        <code>${esc(location.origin)}</code> — open the seeder or the field app on
+        <i>exactly</i> that address, not the other spelling, and not a different port.</li>
+      <li><b>A different browser or profile.</b> Records live in the browser that wrote
+        them, not in the folder, so they do not follow the files or a git pull.</li>
+      <li><b>The seeder ran but the store was memory-only.</b> It says so in its log
+        if the backend cannot persist — in that case the records were gone before you
+        switched tabs.</li>`
+      : `
+      <li><b>The records are from an older version of the field app</b> and lack the
+        <code>stats</code> and <code>rounds</code> an offset set needs. This page never
+        recomputes figures, so it cannot draw them — see the note in CLAUDE.md.</li>
+      <li><b>They failed to parse.</b> ${RAW.unreadable} of them could not be read as
+        JSON. Clearing this origin's site data and re-seeding is safe if they are
+        demo records; if they are real capture, do not clear anything — say so first.</li>`}
+    </ol>
     ${footnote()}`;
     return;
   }
