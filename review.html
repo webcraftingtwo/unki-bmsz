@@ -173,6 +173,10 @@ tbody tr.row:hover{background:var(--raised);cursor:pointer;}
 .pill.flag{background:#33280A;color:var(--paint);border:1px solid var(--paint-dim);}
 .pill.sync{background:var(--grow-dim);color:var(--grow);border:1px solid var(--grow);}
 .pill.pend{background:#33280A;color:var(--paint);border:1px solid var(--paint-dim);}
+/* Seeded demo rows. Deliberately the alarm colour: a fabricated over-break
+   figure sitting next to a real one is the worst thing this page could show
+   without saying so. */
+.pill.demo{background:#2A140F;color:#FFC9BC;border:1px solid var(--rust);}
 
 .empty{text-align:center;padding:64px var(--s3);color:var(--faint);font-size:16px;
   font-family:var(--mono);border:1.5px dashed var(--line);border-radius:10px;
@@ -304,6 +308,14 @@ const signed = v => v==null ? '—' : (v>=0?'+':'') + cm1(v);
    with today's limits — a limit revised later must not restate what an
    old face was measured against. */
 const faces = () => DATA.offsetSet.filter(e => e && e.stats && Array.isArray(e.rounds));
+
+/* Records written by seed-demo.html carry demo:true. They are invented —
+   nobody walked those faces — so the page has to say so rather than let
+   them read as measurements. Counted across every kind, because one demo
+   structure is enough to make the page untrustworthy as a report. */
+const demoCount = () => KINDS.reduce((n,k)=> n + DATA[k].filter(e=>e && e.demo===true).length, 0);
+const isDemo = e => !!(e && e.demo === true);
+const demoTag = e => isDemo(e) ? '<br><span class="pill demo" style="margin-top:6px">Demo</span>' : '';
 const faceDelta = e => e.stats.meanHeight==null ? null : e.stats.meanHeight - e.stats.planned;
 
 /* ═══ 3 · CHARTS ══════════════════════════════════════════════════════
@@ -479,9 +491,22 @@ function render(){
   })).filter(r=>r.delta!=null)
      .sort((a,b)=> b.delta - a.delta);
 
+  const nDemo = demoCount();
+  const nReal = KINDS.reduce((n,k)=> n + DATA[k].filter(e=>e && e.demo!==true).length, 0);
+
   app.innerHTML = `
   <div class="eyebrow">Management review</div>
   <h1>Face measurement, this store</h1>
+  ${nDemo ? `<div class="note warn" style="margin-top:var(--s3)"><span class="mk">◆</span><div>
+    <b>This store contains ${nDemo} seeded demo record${nDemo===1?'':'s'}.</b>
+    They were written by <code>seed-demo.html</code> to demonstrate this page. Nobody
+    measured those faces and none of these figures is evidence of anything.
+    ${nReal ? `There ${nReal===1?'is':'are'} also <b>${nReal}</b> record${nReal===1?'':'s'}
+      from the field app mixed in below, so the totals and the mean above combine real
+      capture with invented data — do not read them as a shift result.`
+            : `Every figure on this page is invented.`}
+    Demo rows are tagged in the tables. Remove them from <code>seed-demo.html</code>.
+  </div></div>` : ''}
   <p class="sub">Everything a Geological Technician has captured on this device, against the
     design cut each face was actually judged by. Figures for management are in metres;
     the measurements underneath them stay in centimetres, as recorded.</p>
@@ -576,7 +601,7 @@ function render(){
             <span style="color:var(--faint);font-size:12.5px">${e.stats.fwB} F/W</span></td>
           <td><span class="pill ${over?'over':'within'}">${over?'Over cut':'Within cut'}</span>
             ${e.stats.heightFlag?'<br><span class="pill flag" style="margin-top:6px">Above 200 cm</span>':''}</td>
-          <td>${esc(e.by||'—')}<br>
+          <td>${esc(e.by||'—')}${demoTag(e)}<br>
             <span style="color:var(--faint);font-size:12.5px">${fmtTS(e.ts)}</span><br>
             <span class="pill ${e.synced?'sync':'pend'}" style="margin-top:6px">${e.synced?'Synced':'On device'}</span></td>
         </tr>`;}).join('')}
@@ -606,7 +631,7 @@ function render(){
           <td>${e.tarp?esc(e.tarp):'—'}</td>
           <td>${e.ack&&e.ack.miner?esc(e.ack.miner):'<span style="color:var(--c-over)">not recorded</span>'}</td>
           <td style="font-size:13.5px;color:var(--dim)">${e.ack&&e.ack.team&&e.ack.team.length?esc(e.ack.team.join(', ')):'—'}</td>
-          <td>${esc(e.by||'—')}<br>
+          <td>${esc(e.by||'—')}${demoTag(e)}<br>
             <span style="color:var(--faint);font-size:12.5px">${fmtTS(e.ts)}</span></td>
         </tr>`).join('')}
       </tbody>
@@ -629,7 +654,8 @@ function render(){
           <div><dt>From face</dt><dd>${s.distFromFace??'—'} m</dd></div>
           <div><dt>BMSZ displacement</dt><dd>${s.displacement??'—'} m</dd></div>
           <div><dt>Confidence</dt><dd>${esc(s.confidence||'—')}</dd></div>
-          <div><dt>Recorded</dt><dd>${esc(s.by||'—')} · ${fmtTS(s.ts)}</dd></div>
+          <div><dt>Recorded</dt><dd>${esc(s.by||'—')} · ${fmtTS(s.ts)}${
+            isDemo(s)?' <span class="pill demo">Demo</span>':''}</dd></div>
         </div>
         ${s.note?`<p style="color:var(--dim);margin:0 0 var(--s2)">${esc(s.note)}</p>`:''}
         ${s.photo?`<img class="facephoto" src="${s.photo}"
@@ -652,6 +678,8 @@ function footnote(){
     it from the stations.<br>
     This app is a data-capture and information tool. It does not replace mine safety
     procedures, ground control, survey standards or competent-person interpretation.
+    ${demoCount()?`<br><b style="color:#FFB9A8">This page is currently showing
+      ${demoCount()} seeded demo record(s) and is not a report.</b>`:''}
   </div>`;
 }
 
@@ -668,7 +696,8 @@ function faceDetail(e){
       <div><dt>Vs design cut</dt><dd style="color:${d>0?'var(--c-over)':'var(--c-under)'}">${signed(d)} cm</dd></div>
       <div><dt>Mean H/W excess</dt><dd>${e.stats.hwB?cm1(e.stats.meanOver)+' cm':'—'}</dd></div>
       <div><dt>Mean F/W excess</dt><dd>${e.stats.fwB?cm1(e.stats.meanOverFW)+' cm':'—'}</dd></div>
-      <div><dt>Recorded by</dt><dd>${esc(e.by||'—')} ${esc(e.byNo||'')}</dd></div>
+      <div><dt>Recorded by</dt><dd>${esc(e.by||'—')} ${esc(e.byNo||'')}${
+        isDemo(e)?' <span class="pill demo">Demo</span>':''}</dd></div>
       <div><dt>At</dt><dd>${fmtTS(e.ts)}</dd></div>
     </div>
     ${e.rounds.map(r=>`

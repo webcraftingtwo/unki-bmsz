@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unki GeoTech · demo data</title>
+<!-- No icon file in this repo, and a browser asks for /favicon.ico anyway.
+     An empty data: URI answers it without a 404 in the console. index.html
+     and review.html both still take that 404 — pre-existing, left alone
+     here rather than widening a demo-data change. -->
+<link rel="icon" href="data:,">
+
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  DEMO DATA SEEDER — for showing the dashboard, nothing else.
+
+  review.html reads the device store. That is the right design (open
+  decision 32) and it means an empty device shows an empty dashboard,
+  which is useless for a demonstration. This page writes ten invented
+  faces into the same store so review.html has something to draw.
+
+  THIS IS NOT PART OF THE APP. It is not linked from index.html or
+  review.html, it writes nothing a technician captured, and it must not
+  be deployed to a tablet that does real work.
+
+  Three rules it keeps, because the alternative is a management screen
+  showing invented over-break as though it were measured:
+
+    1. Every row it writes carries `demo:true`. review.html looks for
+       that and says so, loudly, at the top of the page and on every
+       affected row.
+    2. It never touches a record it did not write. "Remove demo data"
+       removes only keys whose record has demo === true.
+    3. The bords are real zones from the section list. The face marking
+       sheets (2NB3, NS3, MM) are 2010-era sample data and CLAUDE.md
+       says not to seed them as zones, so they are not here — only the
+       NUMBERS off sheet NS3 are reused, as the self-check below.
+
+  The figures are plausible, not real. Nobody measured them.
+  ═══════════════════════════════════════════════════════════════════════
+-->
+
+<style>
+:root{
+  --bg:#12100B; --card:#1A170F; --line:#2E2A1F; --ink:#F5F1E6; --dim:#B9B2A0;
+  --faint:#8A8371; --paint:#FFC61A; --grow:#5FB87A; --rust:#E0553A;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --s1:8px; --s2:14px; --s3:22px; --s4:34px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:var(--s4) 16px; }
+.wrap{max-width:820px;margin:0 auto}
+h1{font-size:30px;line-height:1.2;margin:0 0 var(--s1);letter-spacing:-.01em}
+h2{font-size:18px;margin:var(--s4) 0 var(--s2)}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--paint);margin-bottom:var(--s1)}
+p{color:var(--dim);margin:0 0 var(--s2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:var(--s3);margin:var(--s3) 0}
+.warn{border:1.5px solid var(--rust);background:#2A140F;color:#FFC9BC;
+  border-radius:10px;padding:18px var(--s3);margin:var(--s3) 0;line-height:1.6}
+.warn b{color:#fff}
+.ok{border:1.5px solid var(--grow);background:#14251A;color:#BFE6CC;
+  border-radius:10px;padding:18px var(--s3);margin:var(--s3) 0}
+.btn{appearance:none;border:0;border-radius:10px;background:var(--paint);color:#120F07;
+  font:600 16px/1 inherit;padding:16px 22px;min-height:52px;cursor:pointer;
+  transition:transform .12s ease,filter .12s ease}
+.btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)}
+.btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+.btn.danger{background:transparent;color:#FFB9A8;border:1.5px solid var(--rust)}
+.btn[disabled]{opacity:.45;cursor:not-allowed;transform:none;filter:none}
+.row{display:flex;gap:var(--s2);flex-wrap:wrap;margin:var(--s3) 0 0}
+table{width:100%;border-collapse:collapse;font-size:14.5px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+th{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--faint);font-weight:600}
+td.n{text-align:right;font-family:var(--mono)}
+code,.m{font-family:var(--mono);font-size:13.5px;color:var(--paint)}
+.sub{color:var(--faint);font-size:14px}
+#log{font-family:var(--mono);font-size:13px;color:var(--dim);white-space:pre-wrap;
+  margin-top:var(--s2)}
+.pass{color:var(--grow)} .fail{color:var(--rust)}
+a{color:var(--paint)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Not part of the app</div>
+  <h1>Demo data for the management dashboard</h1>
+  <p>Writes ten invented faces into this device's store so
+    <code>review.html</code> has something to show. Every row is tagged
+    <code>demo:true</code> and the dashboard says so on its face.</p>
+
+  <div class="warn"><b>These are not measurements.</b> Nobody walked these faces.
+    Do not screenshot this data into a report, and do not run this on a tablet
+    that captures real shifts — it puts fabricated over-break figures next to
+    real ones in the same store.</div>
+
+  <div class="card">
+    <h2 style="margin-top:0">This device</h2>
+    <table>
+      <tr><th>Store backend</th><td id="sKind">—</td></tr>
+      <tr><th>Persists?</th><td id="sPersist">—</td></tr>
+      <tr><th>Real records present</th><td class="n" id="sReal">—</td></tr>
+      <tr><th>Demo records present</th><td class="n" id="sDemo">—</td></tr>
+    </table>
+    <div class="row">
+      <button class="btn" id="go">Write 10 demo faces</button>
+      <button class="btn danger" id="clear">Remove demo data</button>
+      <button class="btn ghost" id="open">Open the dashboard</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0">Self-check</h2>
+    <p class="sub">This page carries its own copy of <code>statsFor()</code>, so it can
+      drift from the field app's. The check runs the NS3 12-07-10 sheet numbers through
+      the copy and compares against the regression target in CLAUDE.md. If it fails, the
+      copy is stale — fix it before trusting anything this page writes.</p>
+    <div id="check"></div>
+  </div>
+
+  <p class="sub">The ten faces use real zones from the section list — 14S B1–B8,
+    16N B1–B9 and 16N Strike. They are spread across both sections, three
+    technicians and four days, and deliberately include faces within cut as well
+    as over it, so the dashboard's ranking and its diverging chart have both
+    polarities to draw.</p>
+</div>
+
+<script>
+/* ═══ 1 · THE SAME STORE, PICKED THE SAME WAY ══════════════════════════
+   Identical order to index.html and review.html, plus a remove() this
+   page needs and neither of those has. Key shape is identical too
+   (PFX:kind:id) or the dashboard would not see what this writes. */
+const PFX = 'unkigeo';
+const KINDS = ['faceLog','offsetSet','structure','shift'];
+
+const STORE = (function(){
+  const host = (window.storage && typeof window.storage.get === 'function') ? window.storage : null;
+  if(host) return {
+    kind:'host',
+    set:(k,v)=>host.set(k,v,false),
+    get:async k=>{ const r=await host.get(k,false); return r&&r.value?r.value:null; },
+    list:async p=>{ const r=await host.list(p,false); return (r&&r.keys)||[]; },
+    /* The host API in index.html has no delete, so this page cannot
+       offer one either. Better to say so than to fake a removal. */
+    remove:null,
+  };
+  try{
+    const probe = PFX+':__probe';
+    localStorage.setItem(probe,'1'); localStorage.removeItem(probe);
+    return {
+      kind:'local',
+      set:async(k,v)=>{ localStorage.setItem(k,v); },
+      get:async k=>localStorage.getItem(k),
+      list:async p=>{ const out=[];
+        for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i);
+          if(k && k.indexOf(p)===0) out.push(k); }
+        return out; },
+      remove:async k=>{ localStorage.removeItem(k); },
+    };
+  }catch(e){}
+  const mem = {};
+  return {
+    kind:'memory',
+    set:async(k,v)=>{ mem[k]=v; },
+    get:async k=>(k in mem)?mem[k]:null,
+    list:async p=>Object.keys(mem).filter(k=>k.indexOf(p)===0),
+    remove:async k=>{ delete mem[k]; },
+  };
+})();
+const HAS_STORE = STORE.kind !== 'memory';
+
+async function put(key,val){
+  try{ await STORE.set(PFX+':'+key, JSON.stringify(val)); return true; }
+  catch(e){ console.error('store',e); return false; }
+}
+
+/* ═══ 2 · LIMITS AND STATS, COPIED FROM THE FIELD APP ══════════════════
+   A copy, not an import — there is no build step to share a module.
+   The self-check on the page exists because of that. */
+const LIMITS = {
+  bord:    {label:'Bord / ledging decline', hw:45,  fw:-135},
+  decline: {label:'Decline / strike drive', hw:150, fw:-100},
+};
+const LIMIT_VERSION = '2026-09-CG-REWORK';
+const HEIGHT_FLAG_CM = 200;
+const CHANNEL_FLAG_M = 9;
+const ROUNDS = [
+  {key:'r2', dist:2, label:'Round 1 · 2 m from face'},
+  {key:'r5', dist:5, label:'Round 2 · 5 m from face'},
+];
+const num = v => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+
+/* Verbatim from index.html §statsFor. Do not "improve" it here. */
+function statsFor(stations, hwLimit, fwLimit){
+  let hwB=0,fwB=0,done=0,overHW=0,overFW=0,hws=[],fws=[],heights=[];
+  const planned = hwLimit - fwLimit;
+  stations.forEach(s=>{
+    const hw=num(s.hw), fw=num(s.fw);
+    if(hw!=null&&hw>hwLimit){ hwB++; overHW+=hw-hwLimit; }
+    if(fw!=null&&fw<fwLimit){ fwB++; overFW+=fwLimit-fw; }
+    if(hw!=null) hws.push(hw);
+    if(fw!=null) fws.push(fw);
+    if(hw!=null&&fw!=null){ done++; heights.push(hw-fw); }
+  });
+  const mean = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+  const meanH = mean(heights);
+  return {hwB, fwB, done, total:stations.length, planned,
+          meanOver: hwB?overHW/hwB:0,
+          meanOverFW: fwB?overFW/fwB:0,
+          meanHW: mean(hws), meanFW: mean(fws), meanHeight: meanH,
+          heightFlag: heights.some(h=>h>HEIGHT_FLAG_CM),
+          overCut: meanH!=null&&planned>0 ? ((meanH-planned)/planned)*100 : null};
+}
+
+/* ═══ 3 · THE SELF-CHECK ═══════════════════════════════════════════════
+   Sheet NS3 12-07-10, round 1, on decline limits. CLAUDE.md fixes the
+   expected figures; if the copy of statsFor above drifts, this fails. */
+const NS3 = {
+  hw:[245,247,251,243,242,244],
+  fw:[-132,-134,-132,-137,-134,-138],
+};
+function runCheck(){
+  const st = NS3.hw.map((h,i)=>({hw:h, fw:NS3.fw[i]}));
+  const s = statsFor(st, LIMITS.decline.hw, LIMITS.decline.fw);
+  const r2 = n => n==null ? null : Math.round(n*100)/100;
+  const want = [
+    ['stations',              s.total,            6],
+    ['mean H/W (cm)',         r2(s.meanHW),       245.33],
+    ['mean F/W (cm)',         r2(s.meanFW),       -134.5],
+    ['mean mining height (cm)', r2(s.meanHeight), 379.83],
+    ['mean H/W excess (cm)',  r2(s.meanOver),     95.33],
+    ['mean F/W excess (cm)',  r2(s.meanOverFW),   34.5],
+    ['to management (m)',     r2(s.meanHeight/100), 3.8],
+  ];
+  const pass = want.every(w => w[1] === w[2]);
+  document.getElementById('check').innerHTML =
+    `<table><tr><th>Figure</th><th>This page</th><th>CLAUDE.md</th><th></th></tr>` +
+    want.map(w=>`<tr><td>${w[0]}</td><td class="n">${w[1]}</td><td class="n">${w[2]}</td>
+      <td class="${w[1]===w[2]?'pass':'fail'}">${w[1]===w[2]?'match':'DRIFT'}</td></tr>`).join('') +
+    `</table><p class="${pass?'pass':'fail'}" style="margin-top:14px">${pass
+      ? 'The copy of statsFor() still agrees with the documented target.'
+      : 'STALE — this page disagrees with the field app. Do not seed until it is fixed.'}</p>`;
+  return pass;
+}
+
+/* ═══ 4 · THE TEN FACES ════════════════════════════════════════════════
+   Round 1 readings are written out per station so a reviewer can see
+   exactly what is being invented. Round 2 (5 m from the face) is the
+   same traverse re-read, so it is round 1 shifted by a small fixed
+   pattern rather than a second set of magic numbers — which is also
+   how it behaves in practice.
+
+   `day` / `hour` place the record in time. `by` must belong to the
+   section: a 14 South technician does not capture 16 North.  */
+const TECHS = {
+  chi: {name:'T. Chidindi', no:'UK-4471', section:'14 South'},
+  sib: {name:'P. Sibanda',  no:'UK-4890', section:'14 South'},
+  mab: {name:'R. Mabhena',  no:'UK-5102', section:'16 North'},
+};
+
+const FACES = [
+  { bord:'16N Strike', level:'3 Level', head:'decline', tech:'mab', day:0, hour:7,
+    len:8.2, peg:'SP-3N-118', adv:2.4, wid:6.9, hgt:3.8,
+    hw:[248,252,255,247,244,250,246], fw:[-134,-138,-132,-141,-136,-139,-133],
+    cause:'Over-charging / excess explosive', chan:'CH-16NS-04', dist:3.2, tarp:'2',
+    miner:'S. Moyo (Miner)', team:['Shift Boss (S/B)','Miner'],
+    note:'Worst face of the four days. Both walls over on every station.' },
+
+  { bord:'14S B3', level:'2 Level', head:'bord', tech:'chi', day:0, hour:9,
+    len:7.2, peg:'SP-2S-061', adv:2.1, wid:6.2, hgt:2.1,
+    hw:[58,62,57,64,60,59], fw:[-142,-146,-140,-148,-144,-141],
+    cause:'Hole deviation — drilling alignment', chan:'CH-14SB3-11', dist:4.0, tarp:'2',
+    miner:'P. Ncube (Miner)', team:['Shift Boss (S/B)','Miner','Team Leader'] },
+
+  { bord:'16N B4', level:'3 Level', head:'bord', tech:'mab', day:0, hour:12,
+    len:7.2, peg:'SP-3N-072', adv:2.0, wid:6.1, hgt:1.8,
+    hw:[42,46,41,44,43,40], fw:[-128,-132,-130,-134,-129,-131],
+    cause:'Marking not followed by crew', chan:'CH-16NB4-07', dist:2.6, tarp:'1',
+    miner:'T. Banda (Miner)', team:['Miner'],
+    note:'Within cut. One station a centimetre over on the hangingwall.' },
+
+  { bord:'14S B1', level:'2 Level', head:'decline', tech:'chi', day:1, hour:7,
+    len:6.2, peg:'SP-2S-014', adv:2.3, wid:6.8, hgt:2.7,
+    hw:[164,158,169,161,166], fw:[-102,-98,-105,-101,-99],
+    cause:'Incorrect burden or spacing', chan:'CH-14SB1-03', dist:5.5, tarp:'2',
+    miner:'J. Phiri (Miner)', team:['Shift Boss (S/B)','Miner'] },
+
+  { bord:'16N B7', level:'3 Level', head:'bord', tech:'mab', day:1, hour:10,
+    len:6.2, peg:'SP-3N-131', adv:1.9, wid:6.0, hgt:1.7,
+    hw:[40,38,44,41,39], fw:[-128,-126,-132,-130,-127],
+    cause:'Poor ground conditions', chan:'CH-16NB7-02', dist:2.1, tarp:'1',
+    miner:'K. Dube (Miner)', team:['Miner','Team Leader'],
+    note:'Cleanest face in the set — comfortably within cut on both walls.' },
+
+  { bord:'14S B6', level:'2 Level', head:'bord', tech:'sib', day:1, hour:13,
+    len:8.2, peg:'SP-2S-095', adv:2.2, wid:6.3, hgt:1.9,
+    hw:[54,58,52,60,56,55,57], fw:[-140,-144,-138,-146,-142,-139,-143],
+    cause:'Rig not aligned to BMSZ sidewall mark', chan:'CH-14SB6-09', dist:12.5, tarp:'3',
+    miner:'M. Zulu (Miner)', team:['Shift Boss (S/B)','Miner'],
+    note:'Channel 12.5 m from the face — flagged for sampling, past the 9 m limit.' },
+
+  { bord:'16N B2', level:'3 Level', head:'decline', tech:'mab', day:2, hour:7,
+    len:7.2, peg:'SP-3N-038', adv:2.6, wid:7.1, hgt:3.5,
+    hw:[218,226,212,230,221,224], fw:[-124,-130,-121,-132,-127,-126],
+    cause:'Poor ground conditions', chan:'CH-16NB2-05', dist:3.8, tarp:'3',
+    miner:'S. Moyo (Miner)', team:['Shift Boss (S/B)','Miner','Safety Rep'] },
+
+  { bord:'14S B8', level:'2 Level', head:'bord', tech:'sib', day:2, hour:11,
+    len:5.2, peg:'SP-2S-122', adv:1.8, wid:5.9, hgt:1.7,
+    hw:[43,41,45,42], fw:[-132,-130,-135,-131],
+    cause:'Support installation requirement', chan:'CH-14SB8-01', dist:1.9, tarp:'1',
+    miner:'P. Ncube (Miner)', team:['Miner'],
+    note:'Within cut. No station past either limit.' },
+
+  { bord:'16N B9', level:'3 Level', head:'bord', tech:'mab', day:2, hour:14,
+    len:7.2, peg:'SP-3N-149', adv:2.0, wid:6.2, hgt:2.0,
+    hw:[42,40,44,41,43,39], fw:[-150,-154,-148,-156,-151,-149],
+    cause:'Sockets / misfire redrill', chan:'CH-16NB9-08', dist:10.4, tarp:'S',
+    miner:'K. Dube (Miner)', team:['Shift Boss (S/B)','Miner'],
+    note:'Footwall over on every station, hangingwall within. Redrill through sockets.' },
+
+  { bord:'14S B5', level:'2 Level', head:'decline', tech:'sib', day:3, hour:8,
+    len:9.2, peg:'SP-2S-084', adv:2.5, wid:7.0, hgt:2.6,
+    hw:[158,162,155,165,160,157,163,159], fw:[-98,-102,-96,-104,-100,-97,-101,-99],
+    cause:'Other — see notes', chan:'CH-14SB5-06', dist:6.7, tarp:'2',
+    miner:'J. Phiri (Miner)', team:['Shift Boss (S/B)','Miner','Team Leader'],
+    note:'Marginal — eight stations, mean a few centimetres over the cut.' },
+];
+
+/* The second round is the same traverse re-read from 5 m. Real re-reads
+   differ by a centimetre or two; this is that, deterministically, so the
+   demo is the same every time it is seeded. */
+const R5_DELTA_HW = [ 2,-1, 1,-2, 2, 0,-1, 1];
+const R5_DELTA_FW = [-1, 2,-2, 1, 0,-1, 2,-2];
+
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+
+/* Four days back from today, so the dashboard reads as a recent week. */
+function tsFor(day, hour, min){
+  const d = new Date();
+  d.setDate(d.getDate() - (3 - day));
+  d.setHours(hour, min||0, 0, 0);
+  return d.toISOString();
+}
+
+/* Stations at 1 m, first 1 m off the sidewall, no station zero. */
+const stationDist = i => i + 1;
+
+function buildRound(spec, key, limits){
+  const d = key === 'r5';
+  return spec.hw.map((h,i)=>{
+    const hw = d ? h + R5_DELTA_HW[i % R5_DELTA_HW.length] : h;
+    const fw = d ? spec.fw[i] + R5_DELTA_FW[i % R5_DELTA_FW.length] : spec.fw[i];
+    const over = hw > limits.hw || fw < limits.fw;
+    return { dist: stationDist(i), hw, fw, height: hw - fw,
+             /* A station past the cut must carry a cause — the field app
+                refuses to save without one, so the demo cannot skip it. */
+             cause: over ? spec.cause : '' };
+  });
+}
+
+/* The envelope saveEntry() adds in the field app, plus the demo tag. */
+function envelope(spec, kind){
+  const tech = TECHS[spec.tech];
+  return {
+    id: uid(),
+    ts: tsFor(spec.day, spec.hour, kind==='offsetSet' ? 35 : 10),
+    by: tech.name, byNo: tech.no,
+    shiftId: shiftIdFor(spec.day),
+    place: { level:spec.level, section:tech.section, bord:spec.bord, blastNumber:null },
+    synced: spec.day < 2,          /* older days have flushed, recent ones have not */
+    demo: true,
+  };
+}
+
+const SHIFT_IDS = {};
+const shiftIdFor = day => SHIFT_IDS[day] || (SHIFT_IDS[day] = 'demo-shift-' + day + '-' + uid());
+
+/* ═══ 5 · STRUCTURES ═══════════════════════════════════════════════════
+   Within 3 m of the face, per §9.3. Types come from the field app's
+   seeded list — which CLAUDE.md flags as placeholders, not official
+   Unki codes (open decision 17). Two carry a marked-up photograph. */
+const STRUCTS = [
+  { face:0, type:'Fault', strike:118, dip:64, dipDir:'SE', width:0.4,
+    distFromFace:1.2, displacement:0.8, confidence:'Certain', photo:true,
+    note:'Oblique to layering. Displacement measured on the hangingwall contact. ' +
+         'Reef offset down-dip; marking stepped accordingly.' },
+  { face:0, type:'Dyke', strike:42, dip:81, dipDir:'NW', width:1.1,
+    distFromFace:2.6, displacement:null, confidence:'Certain', photo:true,
+    note:'Dolerite. Wet contact on the north side — standing water in the footwall.' },
+  { face:6, type:'Replacement pegmatite', strike:95, dip:30, dipDir:'S', width:0.6,
+    distFromFace:0.9, displacement:null, confidence:'Probable', photo:false,
+    note:'Coarse pyroxenite replacing reef, undulatory contacts. PGE barren — to waste.' },
+  { face:8, type:'Xenolith', strike:null, dip:null, dipDir:'', width:0.3,
+    distFromFace:2.2, displacement:null, confidence:'Probable', photo:false,
+    note:'Isolated fragment in the hangingwall. Lashed to waste.' },
+];
+
+/* A synthetic marked-up photograph. No library, same as the field app:
+   a 2D canvas and toDataURL. It says DEMO across it in the pixels, so a
+   cropped screenshot of the image alone still cannot pass as a real
+   face photograph. */
+function fakePhoto(label){
+  const c = document.createElement('canvas');
+  c.width = 900; c.height = 600;
+  const x = c.getContext('2d');
+
+  const g = x.createLinearGradient(0,0,900,600);
+  g.addColorStop(0,'#2A2620'); g.addColorStop(.5,'#3A342A'); g.addColorStop(1,'#231F19');
+  x.fillStyle = g; x.fillRect(0,0,900,600);
+
+  /* Rock texture: deterministic blotches, no Math.random, so reseeding
+     gives the same image rather than a new one each time. */
+  for(let i=0;i<220;i++){
+    const a = (i*73)%900, b = (i*149)%600, r = 8 + ((i*37)%46);
+    x.fillStyle = 'rgba(255,255,255,' + (0.012 + ((i*13)%7)/900) + ')';
+    x.beginPath(); x.arc(a,b,r,0,Math.PI*2); x.fill();
+  }
+  /* Footwall and hangingwall lines. */
+  x.strokeStyle = '#8A8371'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(0,168); x.bezierCurveTo(300,140,600,196,900,162); x.stroke();
+  x.beginPath(); x.moveTo(0,470); x.bezierCurveTo(300,498,600,442,900,482); x.stroke();
+
+  /* The technician's mark-up. */
+  x.strokeStyle = '#FFC61A'; x.lineWidth = 5; x.lineCap = 'round';
+  x.beginPath(); x.moveTo(190,250); x.lineTo(330,300); x.lineTo(300,392); x.lineTo(160,342);
+  x.closePath(); x.stroke();
+  x.strokeStyle = '#E0553A';
+  x.beginPath(); x.moveTo(520,200); x.lineTo(610,430); x.stroke();
+  x.beginPath(); x.moveTo(610,430); x.lineTo(588,392); x.moveTo(610,430); x.lineTo(636,398); x.stroke();
+
+  x.font = '600 26px ui-sans-serif,system-ui,sans-serif';
+  x.fillStyle = '#FFC61A'; x.fillText(label, 176, 232);
+
+  /* Unmissable, and in the image rather than around it. */
+  x.save();
+  x.translate(450,300); x.rotate(-0.36);
+  x.font = '800 132px ui-sans-serif,system-ui,sans-serif';
+  x.textAlign = 'center';
+  x.fillStyle = 'rgba(224,85,58,0.34)';
+  x.fillText('DEMO', 0, 0);
+  x.strokeStyle = 'rgba(224,85,58,0.55)'; x.lineWidth = 3;
+  x.strokeText('DEMO', 0, 0);
+  x.font = '700 30px ui-sans-serif,system-ui,sans-serif';
+  x.fillStyle = 'rgba(255,201,26,0.8)';
+  x.fillText('NOT A REAL FACE PHOTOGRAPH', 0, 56);
+  x.restore();
+
+  /* Same downscale settings as the field app's capture path. */
+  return c.toDataURL('image/jpeg', 0.72);
+}
+
+/* ═══ 6 · WRITE ════════════════════════════════════════════════════════ */
+const log = s => { document.getElementById('log').textContent += s + '\n'; };
+
+async function seed(){
+  document.getElementById('log').textContent = '';
+  if(!runCheck()){ log('Refused — the self-check failed. See above.'); return; }
+
+  let n = 0;
+
+  /* One shift record per day. */
+  for(const day of [0,1,2,3]){
+    const tech = TECHS[day===1 || day===3 ? 'sib' : (day===2 ? 'mab' : 'mab')];
+    const rec = {
+      id: shiftIdFor(day), ts: tsFor(day,6,30), by: tech.name, byNo: tech.no,
+      shiftId: shiftIdFor(day), synced: day < 2, demo: true,
+      date: tsFor(day,6,30).slice(0,10),
+      startedAt: tsFor(day,6,30), endedAt: tsFor(day,15,0),
+      shiftName: 'Morning',
+      signout: {}, deviation: null,
+      place: null,
+    };
+    if(await put('shift:'+rec.id, rec)) n++;
+  }
+
+  for(const spec of FACES){
+    const limits = LIMITS[spec.head];
+    const rounds = ROUNDS.map(r=>{
+      const stations = buildRound(spec, r.key, limits);
+      return { key:r.key, dist:r.dist, label:r.label, stations,
+               stats: statsFor(stations, limits.hw, limits.fw) };
+    });
+    const all = rounds.reduce((a,r)=>a.concat(r.stations), []);
+
+    /* ── face log ── */
+    const fl = Object.assign(envelope(spec,'faceLog'), {
+      bord: spec.bord,
+      source: 'manual',                 /* nothing cleared these for entry */
+      peg: spec.peg, advance: spec.adv,
+      faceLength: spec.len, faceWidth: spec.wid, faceHeight: spec.hgt,
+      channelId: spec.chan, distToFace: spec.dist,
+      sampleFlagged: spec.dist != null && spec.dist > CHANNEL_FLAG_M,
+      tarp: spec.tarp,
+      ack: {
+        readiness: {'End is supported':true, 'End is lashed to the footwall':true},
+        team: spec.team, areaSafe: true, miner: spec.miner,
+        at: tsFor(spec.day, spec.hour, 5), by: TECHS[spec.tech].name,
+      },
+      structural: spec.note || '',
+    });
+    if(await put('faceLog:'+fl.id, fl)) n++;
+
+    /* ── offset set ── */
+    const os = Object.assign(envelope(spec,'offsetSet'), {
+      headingType: spec.head, unit: 'cm', interval: 1, faceLength: spec.len,
+      hwLimit: limits.hw, fwLimit: limits.fw,
+      limitVersion: LIMIT_VERSION, limitLabel: limits.label,
+      rounds,
+      stats: statsFor(all, limits.hw, limits.fw),
+    });
+    if(await put('offsetSet:'+os.id, os)) n++;
+  }
+
+  /* ── structures ── */
+  for(const s of STRUCTS){
+    const spec = FACES[s.face];
+    const rec = Object.assign(envelope(spec,'structure'), {
+      type: s.type, strike: s.strike, dip: s.dip, dipDir: s.dipDir,
+      width: s.width, distFromFace: s.distFromFace, displacement: s.displacement,
+      confidence: s.confidence, note: s.note,
+      photo: s.photo ? fakePhoto(spec.bord + ' · ' + s.type) : null,
+      photoStrokes: s.photo ? 3 : 0,
+    });
+    if(await put('structure:'+rec.id, rec)) n++;
+  }
+
+  log('Wrote ' + n + ' demo records — 10 faces, 10 face logs, ' +
+      STRUCTS.length + ' structures, 4 shifts.');
+  if(!HAS_STORE) log('WARNING: memory backend — this is gone on reload, and the ' +
+                     'dashboard in another tab will not see it.');
+  else log('Open review.html to see them.');
+  await refresh();
+}
+
+/* Removes ONLY what this page wrote. A record without demo:true is
+   somebody's captured work and is not this button's business. */
+async function clearDemo(){
+  document.getElementById('log').textContent = '';
+  if(!STORE.remove){
+    log('This backend (' + STORE.kind + ') has no delete in the app\'s storage API, ' +
+        'so this page will not pretend to remove anything. Clear it from the host.');
+    return;
+  }
+  let gone = 0, kept = 0;
+  for(const kind of KINDS){
+    for(const key of await STORE.list(PFX+':'+kind+':')){
+      let rec = null;
+      try{ rec = JSON.parse(await STORE.get(key)); }catch(e){}
+      if(rec && rec.demo === true){ await STORE.remove(key); gone++; }
+      else kept++;
+    }
+  }
+  log('Removed ' + gone + ' demo record(s). Left ' + kept + ' record(s) alone.');
+  await refresh();
+}
+
+async function refresh(){
+  document.getElementById('sKind').textContent = STORE.kind;
+  document.getElementById('sPersist').innerHTML = HAS_STORE
+    ? '<span class="pass">yes</span>'
+    : '<span class="fail">no — memory only, lost on reload</span>';
+  let real = 0, demo = 0;
+  for(const kind of KINDS){
+    for(const key of await STORE.list(PFX+':'+kind+':')){
+      let rec = null;
+      try{ rec = JSON.parse(await STORE.get(key)); }catch(e){}
+      if(rec && rec.demo === true) demo++; else real++;
+    }
+  }
+  document.getElementById('sReal').textContent = real;
+  document.getElementById('sDemo').textContent = demo;
+  const c = document.getElementById('clear');
+  c.disabled = !STORE.remove || demo === 0;
+}
+
+document.getElementById('go').onclick = seed;
+document.getElementById('clear').onclick = clearDemo;
+document.getElementById('open').onclick = () => { location.href = 'review.html'; };
+runCheck();
+refresh();
+</script>
+</body>
+</html>

@@ -121,6 +121,11 @@ notes**, the §7.3 authorisation for the deviations below.
 
 - index.html — field app used by Geological Technicians underground.
 - review.html — management / Geologist review dashboard. READ ONLY.
+- seed-demo.html — writes ten invented faces into the device store so the
+  dashboard has something to show. NOT part of the app: not linked from
+  either page, never deployed to a working tablet. Every row it writes
+  carries `demo:true`, review.html says so in a banner and tags each
+  affected row, and its "remove" touches nothing without that flag.
 - vendor/ — mirror SLAM's vendoring. Never re-point at a CDN.
 - sw.js — app shell only. Never intercept Supabase or non-GET.
 - migrations/ — apply BEFORE deploying app code that writes new columns.
@@ -591,6 +596,20 @@ Opened by the dashboard:
 33. **No shift or date filter.** It shows everything in the store. Once
     there is more than a shift or two of data it needs a range control and
     grouping by shift / section / technician.
+
+Opened by seeding the dashboard:
+
+35. **The 200 cm height flag misfires on decline headings.** It is a flat
+    threshold, but the design cut is not: bord is 180 cm, so flagging at
+    200 catches a face 20 cm over its cut — sensible. Decline is 250 cm,
+    so **every decline face trips the flag even when it is exactly on
+    cut**, and the management screen opens on flagged faces first. Either
+    the flag is `design cut + 20` rather than a constant, or it only
+    applies to bord headings, or 200 is right and the decline limits are
+    wrong. Related to decision 12, which read the design cut as giving
+    "exactly the 200 cm flag height" — that arithmetic works for bord and
+    not for decline. Not changed: the flag is a mine threshold and moving
+    it is a §7.3 ruling, not a refactor.
 
 Opened by the migration:
 
