@@ -132,7 +132,9 @@ notes**, the §7.3 authorisation for the deviations below.
 - sw.js — app shell only. Never intercept Supabase or non-GET.
 - migrations/ — apply BEFORE deploying app code that writes new columns.
   0001 (schema), 0002 (profile provisioning), 0003 (helpers out of the
-  public API) are all **applied** to the GeoTech project.
+  public API) and 0004 (the demo flag) are all **applied** to the GeoTech
+  project. `seed_demo.sql` is data, not schema: the fifty demonstration
+  faces currently in that project, and it records how to remove them.
   `verify_0001.sql` runs 0001 against a throwaway Postgres and asserts
   58 checks including the NS3 regression target — run that, do not
   review the schema by reading it.
@@ -344,6 +346,11 @@ on the network would be a capture that did not happen.
   wrong. Found in testing; do not remove the guard.
 - Reconnecting flushes the queue by itself. The `online` listener does
   it, rather than leaving it to whoever remembers the button.
+- **Seeded demo rows carry `demo = true`** on every capture table
+  (migration 0004), the technicians who "captured" them are named
+  "(demo)", and review.html says so in a banner and on every affected
+  row. The field app never sets the column. Nothing else stops fifty
+  invented faces reading as measurement, so do not remove any of it.
 - **The face photograph does not sync yet.** The schema holds
   `photo_path`, a reference into Storage, and there is no bucket (open
   decision 29). The written record goes up complete; the image stays on
@@ -719,6 +726,21 @@ Opened by wiring the backend:
 39. **Nothing reconciles the handset against the server.**
     `offset_stat_drift` exists and will show any face where the two
     disagree, and nothing looks at it. Decide who does, and how often.
+
+Opened by seeding the backend:
+
+40. **The demo data is in the same tables as real capture.** Fifty
+    invented faces sit in `face_logs`, `offset_sets` and
+    `offset_stations` alongside anything a technician captures, kept
+    apart only by `demo = true` and the "(demo)" names. That is enough
+    for the dashboard, which marks them, and it is **not** enough for
+    anything that queries the tables directly — a report written against
+    `offset_set_stats` without `where not demo` would mix them. Either
+    clear the demo rows before the pilot (the SQL is in
+    `migrations/0004`) or decide that every consumer filters.
+41. **Leaked-password protection is off.** Supabase can check new
+    passwords against HaveIBeenPwned; the project does not. Cheap to
+    enable and directly relevant to decision 20's password policy.
 
 ## When making changes
 

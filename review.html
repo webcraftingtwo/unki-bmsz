@@ -443,19 +443,26 @@ function sbSignOut(){
    paths to keep honest. Instead the server rows are adapted into the
    shape the device store produces, with one deliberate substitution:
    `stats` comes from the server's derived view, not from the handset. */
+/* PostgREST returns `numeric` columns as JSON STRINGS, not numbers —
+   "379.83", not 379.83. Everything downstream does arithmetic on these
+   (means, sums, the diverging chart's scale), and in JavaScript
+   "379.83" + 250 is "379.83250". So every value crossing this boundary
+   is coerced exactly once, here, and nothing below it has to remember. */
+const n = v => v == null ? null : (typeof v === 'number' ? v : Number(v));
+
 function adaptStats(v){
   if(!v) return null;
   return {
-    hwB: v.hw_breaches, fwB: v.fw_breaches,
-    done: v.stations, total: v.stations,
-    planned: v.design_cut_cm,
-    meanOver:   v.mean_hw_excess_cm != null ? Number(v.mean_hw_excess_cm) : 0,
-    meanOverFW: v.mean_fw_excess_cm != null ? Number(v.mean_fw_excess_cm) : 0,
-    meanHW:     v.mean_hw_cm != null ? Number(v.mean_hw_cm) : null,
-    meanFW:     v.mean_fw_cm != null ? Number(v.mean_fw_cm) : null,
-    meanHeight: v.mean_mining_height_cm != null ? Number(v.mean_mining_height_cm) : null,
+    hwB: n(v.hw_breaches) || 0, fwB: n(v.fw_breaches) || 0,
+    done: n(v.stations), total: n(v.stations),
+    planned: n(v.design_cut_cm),
+    meanOver:   v.mean_hw_excess_cm != null ? n(v.mean_hw_excess_cm) : 0,
+    meanOverFW: v.mean_fw_excess_cm != null ? n(v.mean_fw_excess_cm) : 0,
+    meanHW:     n(v.mean_hw_cm),
+    meanFW:     n(v.mean_fw_cm),
+    meanHeight: n(v.mean_mining_height_cm),
     heightFlag: !!v.height_flag,
-    overCut:    v.over_cut_pct != null ? Number(v.over_cut_pct) : null,
+    overCut:    n(v.over_cut_pct),
   };
 }
 
@@ -489,15 +496,12 @@ async function loadFromServer(){
 
   DATA.faceLog = logs.map(r=>({
     id:r.id, ts:r.created_at, by:name(r.observer), byNo:empNo(r.observer),
-    shiftId:r.shift_id, synced:true, remote:true,
+    shiftId:r.shift_id, synced:true, remote:true, demo:!!r.demo,
     place:{bord:r.bord, level:r.level, section:r.section},
     bord:r.bord, source:r.source, peg:r.peg,
-    advance:r.advance_m!=null?Number(r.advance_m):null,
-    faceLength:r.face_length_m!=null?Number(r.face_length_m):null,
-    faceWidth:r.face_width_m!=null?Number(r.face_width_m):null,
-    faceHeight:r.face_height_m!=null?Number(r.face_height_m):null,
-    channelId:r.channel_id,
-    distToFace:r.dist_to_face_m!=null?Number(r.dist_to_face_m):null,
+    advance:n(r.advance_m), faceLength:n(r.face_length_m),
+    faceWidth:n(r.face_width_m), faceHeight:n(r.face_height_m),
+    channelId:r.channel_id, distToFace:n(r.dist_to_face_m),
     /* Derived by the database, not asserted by the handset. */
     sampleFlagged:!!r.sample_flagged,
     tarp:r.tarp, structural:r.structural,
@@ -513,19 +517,19 @@ async function loadFromServer(){
         key: d===2?'r2':'r5', dist:d,
         label:'Round '+(d===2?1:2)+' · '+d+' m from face',
         stations: sts.filter(x=>Number(x.round_dist_m)===d)
-                     .sort((a,b)=>a.station_dist_m-b.station_dist_m)
-                     .map(x=>({dist:x.station_dist_m, hw:x.hw_cm, fw:x.fw_cm,
-                               height:x.mining_height_cm, cause:x.cause||''})),
+                     .sort((a,b)=>n(a.station_dist_m)-n(b.station_dist_m))
+                     .map(x=>({dist:n(x.station_dist_m), hw:n(x.hw_cm), fw:n(x.fw_cm),
+                               height:n(x.mining_height_cm), cause:x.cause||''})),
         stats: adaptStats(rv),
       };
     }).filter(rd=>rd.stations.length);
     return {
       id:r.id, ts:r.created_at, by:name(r.observer), byNo:empNo(r.observer),
-      shiftId:r.shift_id, synced:true, remote:true,
+      shiftId:r.shift_id, synced:true, remote:true, demo:!!r.demo,
       place:{bord:r.bord, section:r.section},
-      headingType:r.heading, unit:'cm', interval:r.interval_m,
-      faceLength:r.face_length_m!=null?Number(r.face_length_m):null,
-      hwLimit:r.hw_limit_cm, fwLimit:r.fw_limit_cm,
+      headingType:r.heading, unit:'cm', interval:n(r.interval_m),
+      faceLength:n(r.face_length_m),
+      hwLimit:n(r.hw_limit_cm), fwLimit:n(r.fw_limit_cm),
       limitVersion:r.limit_version, limitLabel:r.limit_label,
       rounds,
       stats: adaptStats(setStatById[r.id]),
@@ -534,12 +538,11 @@ async function loadFromServer(){
 
   DATA.structure = structs.map(r=>({
     id:r.id, ts:r.created_at, by:name(r.observer), byNo:empNo(r.observer),
-    shiftId:r.shift_id, synced:true, remote:true,
+    shiftId:r.shift_id, synced:true, remote:true, demo:!!r.demo,
     place:{bord:r.bord, section:r.section},
-    type:r.type, strike:r.strike_deg, dip:r.dip_deg, dipDir:r.dip_direction,
-    width:r.width_m!=null?Number(r.width_m):null,
-    distFromFace:r.dist_from_face_m!=null?Number(r.dist_from_face_m):null,
-    displacement:r.displacement_m!=null?Number(r.displacement_m):null,
+    type:r.type, strike:n(r.strike_deg), dip:n(r.dip_deg), dipDir:r.dip_direction,
+    width:n(r.width_m), distFromFace:n(r.dist_from_face_m),
+    displacement:n(r.displacement_m),
     confidence:r.confidence, note:r.note,
     /* Photographs are not in Storage yet (open decision 29), so a
        server-read structure has no image. The written record is whole
@@ -548,7 +551,8 @@ async function loadFromServer(){
   }));
 
   DATA.shift = shifts.map(r=>({
-    id:r.id, ts:r.created_at, by:name(r.observer), shiftId:r.id, synced:true, remote:true,
+    id:r.id, ts:r.created_at, by:name(r.observer), shiftId:r.id, synced:true,
+    remote:true, demo:!!r.demo,
     startedAt:r.started_at, endedAt:r.ended_at, shiftName:r.shift_name,
     deviation:r.deviation,
   }));
@@ -817,14 +821,23 @@ function render(){
   <h1>Face measurement${SOURCE==='server'?'':', this store'}</h1>
   ${sourceBar()}
   ${nDemo ? `<div class="note warn" style="margin-top:var(--s3)"><span class="mk">◆</span><div>
-    <b>This store contains ${nDemo} seeded demo record${nDemo===1?'':'s'}.</b>
-    They were written by <code>seed-demo.html</code> to demonstrate this page. Nobody
-    measured those faces and none of these figures is evidence of anything.
+    <b>${SOURCE==='server'
+      ? `This project holds ${nDemo} seeded demo record${nDemo===1?'':'s'}.`
+      : `This store contains ${nDemo} seeded demo record${nDemo===1?'':'s'}.`}</b>
+    ${SOURCE==='server'
+      ? `They were seeded to demonstrate this page and carry <code>demo = true</code>
+         in the database; the technicians who "captured" them are named
+         <i>(demo)</i>.`
+      : `They were written by <code>seed-demo.html</code> to demonstrate this page.`}
+    Nobody measured those faces and none of these figures is evidence of anything.
     ${nReal ? `There ${nReal===1?'is':'are'} also <b>${nReal}</b> record${nReal===1?'':'s'}
       from the field app mixed in below, so the totals and the mean above combine real
       capture with invented data — do not read them as a shift result.`
             : `Every figure on this page is invented.`}
-    Demo rows are tagged in the tables. Remove them from <code>seed-demo.html</code>.
+    Demo rows are tagged in the tables. ${SOURCE==='server'
+      ? `Clearing them is an administrative delete against the database — the SQL is in
+         <code>migrations/0004</code>, and nobody can do it from the app.`
+      : `Remove them from <code>seed-demo.html</code>.`}
   </div></div>` : ''}
   <p class="sub">Everything a Geological Technician has captured on this device, against the
     design cut each face was actually judged by. Figures for management are in metres;
