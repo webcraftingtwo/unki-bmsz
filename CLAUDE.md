@@ -112,7 +112,9 @@ notes**, the §7.3 authorisation for the deviations below.
 
 - Vanilla HTML / CSS / JS. NO build process, NO framework, NO npm.
 - Supabase backend (Postgres + RLS + auth) — GeoTech's OWN project,
-  NOT SLAM's. See the hard rules.
+  `GeoTech` (`finnereptajssuzshrrc`), **wired and live**. NOT SLAM's.
+  See the hard rules. No client library: the API is HTTPS + JSON and
+  `fetch` is enough, so there is no bundle to vendor or maintain.
 - Installable PWA, vendored dependencies, service worker app-shell cache.
 - Deliberate, for the same reason as SLAM: runs underground on
   ruggedised tablets with no signal.
@@ -129,10 +131,11 @@ notes**, the §7.3 authorisation for the deviations below.
 - vendor/ — mirror SLAM's vendoring. Never re-point at a CDN.
 - sw.js — app shell only. Never intercept Supabase or non-GET.
 - migrations/ — apply BEFORE deploying app code that writes new columns.
-  `0001_geotech_init.sql` is the initial schema and is **applied
-  nowhere yet**. `verify_0001.sql` runs it against a throwaway Postgres
-  and asserts 58 checks, including the NS3 regression target — run that,
-  do not review the schema by reading it.
+  0001 (schema), 0002 (profile provisioning), 0003 (helpers out of the
+  public API) are all **applied** to the GeoTech project.
+  `verify_0001.sql` runs 0001 against a throwaway Postgres and asserts
+  58 checks including the NS3 regression target — run that, do not
+  review the schema by reading it.
 
 ## Hard rules — do not break these
 
@@ -140,7 +143,8 @@ Inherited from SLAM, and they are not negotiable here either:
 
 - NEVER add external dependencies, a bundler, or a build step.
 - NEVER weaken or bypass RLS. Ask before touching any RLS.
-- **NEVER touch SLAM's Supabase project.** GeoTech has its own. The
+- **NEVER touch SLAM's Supabase project.** GeoTech has its own:
+  `GeoTech` (`finnereptajssuzshrrc`), eu-central-1, created 2026-09-24. The
   project `valterra-slam-reentry` (`qdlaaiofcrfkrsujhisg`) is
   slam-reentry-system's production database — 18 tables, RLS on all of
   them, live rows including `audit_log`, `gas_readings` and
@@ -276,15 +280,75 @@ section's data. Role at registration is **self-declared** and stored as
 `roleSource:'self-declared'` — it grants nothing, and §7.3 deviation
 authorisation still belongs to the Chief Geologist.
 
-Four functions are the whole Supabase seam. Replace their bodies and
-nothing else in the file moves:
+Four functions were the whole Supabase seam, and they are now wired.
+Nothing else in `index.html` knows the backend exists, except
+`syncNow()`, which pushes records.
 
-| Function | Becomes |
+| Function | Is now |
 |---|---|
-| `findAccount()` | a profiles read |
-| `createAccount()` | `auth.signUp` |
-| `authenticate()` | `auth.signInWithPassword` |
-| `newSession()` | the session auth returns |
+| `findAccount()` | the cached offline credential for this device |
+| `createAccount()` | `POST /auth/v1/signup` |
+| `authenticate()` | `POST /auth/v1/token`, then a `profiles` read |
+| `newSession()` | the tokens auth returns, plus the 12 h shift expiry |
+
+### How sign-in actually works
+
+- **Employee number, not e-mail.** Supabase auth is keyed on an address;
+  the mine signs in with a number. `sbEmail()` maps one to the other:
+  `UK-4471` → `uk-4471@geotech.unki.invalid`. `.invalid` is reserved by
+  RFC 2606 and can never route, which is the point — these are handles,
+  not mailboxes.
+- **Therefore e-mail confirmation must stay OFF** for the project
+  (Authentication → Providers → Email). A confirmation to a `.invalid`
+  address can never arrive, so every account would be stranded.
+- **The profile row is created by a trigger on `auth.users`**, not by the
+  client. The app has no INSERT on `profiles` and must never be given
+  one.
+- **Role is set by the server and the form does not ask.** Everyone is
+  created `geological_technician`. A self-declared `chief_geologist`
+  would otherwise hold §7.3 deviation authority and the right to version
+  limit sets. Elevation is an admin `update` against the database — the
+  SQL is in migration 0002.
+- **Section IS believed**, because nobody could sign up otherwise, and it
+  is recorded as `section_source = 'self-declared'`. Section is the RLS
+  read boundary, so this is the weakest point in the design — see open
+  decision 36.
+- **Offline sign-in still works, after the first time.** Once the server
+  has verified someone on a device, a PBKDF2 record of that password is
+  cached locally (same 210k iterations as before) and used when there is
+  no signal. It can only ever say yes to a password the server has
+  already accepted on that device; it is a cached verdict, not a second
+  authority. A first sign-in on a new device needs a connection.
+- **The server's answer is final.** When the server is reachable and says
+  no, there is no local fallback — otherwise a revoked password would
+  outlive its revocation.
+
+### The write path
+
+Capture goes to the device store first, always, and is pushed
+afterwards. Underground there is no signal, and a capture that depended
+on the network would be a capture that did not happen.
+
+- A record is marked `synced` **only** after the server returns the row
+  it stored. A failure leaves it queued, with `syncError` set, to be
+  retried. Nothing is ever dropped.
+- Order follows the foreign keys: shift, face log, offset set with its
+  stations, structures. The shift row is created lazily on first need,
+  because face logs reference a shift long before sign-out writes it.
+- **Only one push may be in flight.** `syncNow()` holds a promise and a
+  second caller awaits the first. This is not tidiness: reconnecting
+  fires the automatic flush at the same moment as a press of the sync
+  button, both runs read the same unsynced records, and the same face
+  measurement is inserted twice. Two identical rows in a statutory
+  record are worse than a failed sync, because nothing about them looks
+  wrong. Found in testing; do not remove the guard.
+- Reconnecting flushes the queue by itself. The `online` listener does
+  it, rather than leaving it to whoever remembers the button.
+- **The face photograph does not sync yet.** The schema holds
+  `photo_path`, a reference into Storage, and there is no bucket (open
+  decision 29). The written record goes up complete; the image stays on
+  the device. This is survivable only because the photo was always
+  defined as an addition to that record, never a replacement for it.
 
 ## Running it in a browser
 
@@ -325,9 +389,15 @@ never an edit made here (§9.1).
 - **Metres for management, centimetres underneath.** Same boundary rule as
   the field app, through the same `toM()`. The hero figure and the "vs cut"
   column carry both.
-- **Nothing is recomputed.** Every figure comes from the stats the field app
-  stored against the limit set snapshotted onto that record. A limit revised
-  later must not restate what an old face was judged by.
+- **Two sources, and the page says which.** Reading **this device**, the
+  figures are the ones the handset computed at save. Reading **the mine
+  server**, they come from `offset_set_stats` — derived by Postgres from the
+  stations and that same snapshot, never from what the handset submitted.
+  The server view is authoritative and the device view is not.
+- **Nothing is recomputed in this file**, on either source. A limit revised
+  later must not restate what an old face was judged by, which is why every
+  record carries the limit set that judged it.
+- Signing in here is a read. There is still no `put()`.
 - Structure: hero (mean mining height vs design cut) → KPI row → faces
   ranked against their cut → what is driving the over-break → the table of
   every face, with a station-level drill-in → acknowledgement audit →
@@ -529,20 +599,18 @@ Opened by the rework, all recorded rather than guessed at:
 
 Opened by the sign-in rework:
 
-18. **Should accounts be self-serve at all?** Anyone can currently
-    register and type their own name, employee number and role, and
-    every record they then create is signed with it (§9.1). The mine
-    may want accounts provisioned by MRM instead, with the person only
-    setting a password. Built self-serve because that is what was
-    asked; one function changes it. **`migrations/0001` takes the
-    provisioned side** — `profiles` has no INSERT policy and no INSERT
-    privilege, so self-serve registration cannot work against that
-    schema. One of the two has to move; this needs the ruling before
-    either does.
-19. **Role provisioning.** Self-declared today and recorded as such.
-    In `migrations/0001` role and section are server-side columns on
-    `profiles` with no self-write path, which is the right shape but
-    leaves the question open: who grants `chief_geologist`, and how.
+18. **Should accounts be self-serve at all?** PARTLY RULED by the
+    wiring, in the only direction that was safe: sign-up is still
+    self-serve, but the server decides what it means. A trigger on
+    `auth.users` creates the profile — the client has no INSERT — and
+    **role is forced to `geological_technician`**, so a self-declared
+    Chief Geologist gets nothing. Still open: whether MRM should
+    provision accounts outright rather than let people register.
+19. **Role provisioning.** Elevation is an `update` run against the
+    database, which nobody can do from the app — not even a Chief
+    Geologist, since there is no UPDATE policy or privilege on
+    `profiles`. The SQL is in `migrations/0002`. Still open: **who at
+    the mine runs it**, and what evidence they need first.
 20. **Password policy.** 10 characters minimum, no composition rules,
     5 attempts then a 15-minute lockout. DERIVED — no Unki policy was
     supplied. Confirm against the mine's IT standard.
@@ -572,9 +640,13 @@ Opened by REWORK 2:
 28. **Station spacing inside a round** is still 1 m. The notes fix the
     two round distances but say nothing about spacing, so decision 2's
     ruling was carried forward.
-29. **Photo retention.** Face photos are stored on the device at 1280 px
-    / q0.72. No retention rule, no size cap across a shift, and no
-    Storage bucket yet. Decide before production.
+29. **Photo retention — and they do not sync.** Face photos are stored
+    on the device at 1280 px / q0.72. There is no Storage bucket, so
+    `structures.photo_path` is always null and **the photograph never
+    leaves the tablet**. A geologist reading the server sees the written
+    record without the image. Survivable only because the photo was
+    always an addition to that record, never a replacement. Needs a
+    bucket, a retention rule and a size cap before production.
 
 Opened by REWORK 3:
 
@@ -619,6 +691,34 @@ Opened by seeding the dashboard:
     "exactly the 200 cm flag height" — that arithmetic works for bord and
     not for decline. Not changed: the flag is a mine threshold and moving
     it is a §7.3 ruling, not a refactor.
+
+Opened by wiring the backend:
+
+36. **Section is self-asserted, and section IS the RLS boundary.** A
+    person picks their section at sign-up and the server believes them,
+    because otherwise nobody could register and there is no MRM
+    provisioning UI. Someone who types "16 North" can read 16 North.
+    Every such row carries `section_source = 'self-declared'` so MRM can
+    audit and correct it, but that is detection, not prevention. **This
+    is the weakest point in the auth design.** It needs the ruling on
+    decision 18 before production.
+37. **E-mail confirmation must stay OFF, and there is no password
+    reset.** Sign-in is by employee number, mapped to a reserved
+    `…@geotech.unki.invalid` address that can never receive mail. So
+    Supabase's own recovery flow cannot work, which turns decision 22
+    from a gap into a certainty: a technician who forgets a password has
+    no self-service route back in. Decide who resets it and how they
+    verify who is asking.
+38. **`limit_sets` is empty on the server.** The table is ready and the
+    Chief Geologist's seed was deliberately not run, so `authorised_by`
+    is a real person (§7.3). Meanwhile the app still uses its own
+    client-side constants and snapshots them onto each record, so
+    nothing is broken — but the server holds no authorised copy of the
+    limits yet, and the two could drift. Seed it, then decide whether
+    the app should read limits from the server rather than carry them.
+39. **Nothing reconciles the handset against the server.**
+    `offset_stat_drift` exists and will show any face where the two
+    disagree, and nothing looks at it. Decide who does, and how often.
 
 ## When making changes
 

@@ -177,6 +177,28 @@ tbody tr.row:hover{background:var(--raised);cursor:pointer;}
    figure sitting next to a real one is the worst thing this page could show
    without saying so. */
 .pill.demo{background:#2A140F;color:#FFC9BC;border:1px solid var(--rust);}
+/* Which store the page is reading. Always visible: a figure from one
+   device and a figure from the mine's server are not the same claim. */
+.src{display:flex;flex-wrap:wrap;gap:var(--s2);align-items:center;
+  background:var(--card);border:1px solid var(--line);border-radius:10px;
+  padding:13px var(--s3);margin:var(--s3) 0;font-size:14.5px;color:var(--dim)}
+.src b{color:var(--ink)}
+.src .grow{flex:1 1 auto;min-width:240px}
+.src button{appearance:none;border:1.5px solid var(--line);background:transparent;
+  color:var(--ink);border-radius:8px;padding:9px 14px;font:600 14px/1 inherit;
+  min-height:40px;cursor:pointer}
+.src button.go{background:var(--paint);color:#120F07;border-color:var(--paint)}
+.signin{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:var(--s3);margin:var(--s3) 0;max-width:460px}
+.signin label{display:block;font-size:13px;color:var(--faint);margin:0 0 6px;
+  font-family:var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.signin input{width:100%;box-sizing:border-box;background:#120F09;color:var(--ink);
+  border:1.5px solid var(--line);border-radius:9px;padding:13px 14px;font:16px/1.2 inherit;
+  margin:0 0 var(--s2)}
+.signin input:focus{outline:2px solid var(--paint);outline-offset:1px}
+.signin .go{appearance:none;border:0;border-radius:9px;background:var(--paint);
+  color:#120F07;padding:13px 18px;font:600 15px/1 inherit;min-height:46px;
+  cursor:pointer;width:100%}
 /* The self-diagnosis on an empty page. */
 .diag{width:100%;max-width:560px;border-collapse:collapse;margin:var(--s3) 0;
   font-family:var(--mono);font-size:13.5px}
@@ -238,9 +260,8 @@ ol.fix b{color:var(--ink)}
    put() in this file: management reviews the record, it does not edit
    it. A correction is a new row captured in the field app (§9.1).
 
-   Today this reads the device store, so it shows what is on THIS
-   device. When the Supabase path is built, replace loadAll() with a
-   query and nothing below it changes.                                */
+   This reads the device store. It can also read the mine server —
+   see the block below — and says which of the two it is showing.   */
 
 const PFX = 'unkigeo';
 const KINDS = ['faceLog','offsetSet','structure','shift'];
@@ -319,6 +340,222 @@ function diagnostics(){
     <tr><th>Keys under <code>${PFX}:</code></th><td>${RAW.keys}</td></tr>
     <tr><th>Unreadable or incomplete</th><td>${RAW.unreadable}</td></tr>
   </table>`;
+}
+
+
+/* ═══ 1b · THE MINE SERVER ═════════════════════════════════════════════
+
+   The device store above is what a technician's own tablet holds.
+   Management is not on that tablet (open decision 32), so this page can
+   also read GeoTech's Supabase project directly. Signing in here is a
+   read: this file still has no put() and never writes back.
+
+   ONE IMPORTANT DIFFERENCE between the two sources. Reading the device
+   store, the figures are the ones the handset computed at save, against
+   the limit set snapshotted onto the record. Reading the server, the
+   figures come from `offset_set_stats` — derived by Postgres from the
+   stations and that same snapshot, and never from what the handset
+   submitted. The handset's own numbers sit in `reported_stats`, unread
+   here, and `offset_stat_drift` is where any disagreement shows up.
+
+   So: the server view is authoritative and the device view is not, and
+   the page says which one you are looking at. */
+
+const SB = {
+  url: 'https://finnereptajssuzshrrc.supabase.co',
+  key: 'sb_publishable_4F9nx2HYSAv5Z9scbMod3A_FcpD5PWu',
+};
+const SB_ON = !!(SB.url && SB.key);
+const SB_SESSION_KEY = PFX + ':review:session';
+
+let SOURCE = 'device';          // 'server' | 'device'
+let SHOW_SIGNIN = false;
+let SB_TOKEN = null;
+let SB_WHO   = null;            // {name, section, role}
+let SB_ERR   = null;
+
+const sbEmail = no =>
+  String(no||'').trim().toUpperCase().toLowerCase().replace(/[^a-z0-9.\-]/g,'-')
+  + '@geotech.unki.invalid';
+
+async function sbFetch(path, opts){
+  opts = opts || {};
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), opts.timeout || 20000);
+  try{
+    const res = await fetch(SB.url + path, {
+      method: opts.method || 'GET',
+      headers: {
+        'apikey': SB.key,
+        'Authorization': 'Bearer ' + (opts.token || SB.key),
+        'Content-Type': 'application/json',
+      },
+      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+      signal: ctl.signal,
+    });
+    const text = await res.text();
+    let data = null;
+    try{ data = text ? JSON.parse(text) : null; }catch(e){ data = {message:text}; }
+    return {ok: res.ok, status: res.status, data};
+  }catch(e){
+    return {ok:false, status:0, offline:true,
+            data:{message:(e && e.message) || 'Network unreachable'}};
+  }finally{ clearTimeout(timer); }
+}
+
+async function sbSignIn(employeeNo, password){
+  const r = await sbFetch('/auth/v1/token?grant_type=password',
+    {method:'POST', body:{email:sbEmail(employeeNo), password}});
+  if(r.offline) return {ok:false, msg:'Could not reach the mine server.'};
+  if(!r.ok)     return {ok:false, msg:'Employee number or password is incorrect.'};
+
+  const tok = r.data || {};
+  const p = await sbFetch(
+    '/rest/v1/profiles?select=full_name,role,section&id=eq.'+
+    encodeURIComponent(tok.user && tok.user.id), {token: tok.access_token});
+  const row = p.ok && Array.isArray(p.data) && p.data[0];
+  if(!row) return {ok:false, msg:'That account has no profile on the server.'};
+
+  SB_TOKEN = tok.access_token;
+  SB_WHO   = {name:row.full_name, role:row.role, section:row.section};
+  try{ sessionStorage.setItem(SB_SESSION_KEY,
+        JSON.stringify({token:SB_TOKEN, who:SB_WHO})); }catch(e){}
+  return {ok:true};
+}
+
+function sbRestore(){
+  try{
+    const raw = sessionStorage.getItem(SB_SESSION_KEY);
+    if(!raw) return false;
+    const s = JSON.parse(raw);
+    if(!s || !s.token) return false;
+    SB_TOKEN = s.token; SB_WHO = s.who;
+    return true;
+  }catch(e){ return false; }
+}
+function sbSignOut(){
+  SB_TOKEN = null; SB_WHO = null; SOURCE = 'device';
+  try{ sessionStorage.removeItem(SB_SESSION_KEY); }catch(e){}
+}
+
+/* ── server rows → the shape this page already renders ────────────────
+   Rewriting the rendering to a second data shape would mean two code
+   paths to keep honest. Instead the server rows are adapted into the
+   shape the device store produces, with one deliberate substitution:
+   `stats` comes from the server's derived view, not from the handset. */
+function adaptStats(v){
+  if(!v) return null;
+  return {
+    hwB: v.hw_breaches, fwB: v.fw_breaches,
+    done: v.stations, total: v.stations,
+    planned: v.design_cut_cm,
+    meanOver:   v.mean_hw_excess_cm != null ? Number(v.mean_hw_excess_cm) : 0,
+    meanOverFW: v.mean_fw_excess_cm != null ? Number(v.mean_fw_excess_cm) : 0,
+    meanHW:     v.mean_hw_cm != null ? Number(v.mean_hw_cm) : null,
+    meanFW:     v.mean_fw_cm != null ? Number(v.mean_fw_cm) : null,
+    meanHeight: v.mean_mining_height_cm != null ? Number(v.mean_mining_height_cm) : null,
+    heightFlag: !!v.height_flag,
+    overCut:    v.over_cut_pct != null ? Number(v.over_cut_pct) : null,
+  };
+}
+
+async function loadFromServer(){
+  const q = async (path) => {
+    const r = await sbFetch(path, {token: SB_TOKEN});
+    if(!r.ok){ throw new Error((r.data && (r.data.message || r.data.hint)) || 'read failed'); }
+    return Array.isArray(r.data) ? r.data : [];
+  };
+
+  const [logs, sets, setStats, roundStats, stations, structs, shifts, people] =
+    await Promise.all([
+      q('/rest/v1/face_logs?select=*&order=created_at.desc'),
+      q('/rest/v1/offset_sets?select=*&order=created_at.desc'),
+      q('/rest/v1/offset_set_stats?select=*'),
+      q('/rest/v1/offset_round_stats?select=*'),
+      q('/rest/v1/offset_stations?select=*&order=station_dist_m.asc'),
+      q('/rest/v1/structures?select=*&order=created_at.desc'),
+      q('/rest/v1/shift_records?select=*&order=created_at.desc'),
+      q('/rest/v1/profiles?select=id,full_name,employee_no'),
+    ]);
+
+  const who  = {}; people.forEach(p=>{ who[p.id] = p; });
+  const name = id => (who[id] && who[id].full_name) || '—';
+  const empNo = id => (who[id] && who[id].employee_no) || '';
+  const byId  = (arr, k) => { const m={}; arr.forEach(r=>{ (m[r[k]] = m[r[k]] || []).push(r); }); return m; };
+
+  const setStatById   = {}; setStats.forEach(v=>{ setStatById[v.offset_set_id] = v; });
+  const roundsBySet   = byId(roundStats, 'offset_set_id');
+  const stationsBySet = byId(stations, 'offset_set_id');
+
+  DATA.faceLog = logs.map(r=>({
+    id:r.id, ts:r.created_at, by:name(r.observer), byNo:empNo(r.observer),
+    shiftId:r.shift_id, synced:true, remote:true,
+    place:{bord:r.bord, level:r.level, section:r.section},
+    bord:r.bord, source:r.source, peg:r.peg,
+    advance:r.advance_m!=null?Number(r.advance_m):null,
+    faceLength:r.face_length_m!=null?Number(r.face_length_m):null,
+    faceWidth:r.face_width_m!=null?Number(r.face_width_m):null,
+    faceHeight:r.face_height_m!=null?Number(r.face_height_m):null,
+    channelId:r.channel_id,
+    distToFace:r.dist_to_face_m!=null?Number(r.dist_to_face_m):null,
+    /* Derived by the database, not asserted by the handset. */
+    sampleFlagged:!!r.sample_flagged,
+    tarp:r.tarp, structural:r.structural,
+    ack:{miner:r.miner_name, team:r.team||[], areaSafe:r.area_safe,
+         readiness:r.readiness||{}, at:r.client_ts, by:name(r.observer)},
+  }));
+
+  DATA.offsetSet = sets.map(r=>{
+    const sts = (stationsBySet[r.id]||[]);
+    const rounds = [2,5].map(d=>{
+      const rv = (roundsBySet[r.id]||[]).find(x=>Number(x.round_dist_m)===d);
+      return {
+        key: d===2?'r2':'r5', dist:d,
+        label:'Round '+(d===2?1:2)+' · '+d+' m from face',
+        stations: sts.filter(x=>Number(x.round_dist_m)===d)
+                     .sort((a,b)=>a.station_dist_m-b.station_dist_m)
+                     .map(x=>({dist:x.station_dist_m, hw:x.hw_cm, fw:x.fw_cm,
+                               height:x.mining_height_cm, cause:x.cause||''})),
+        stats: adaptStats(rv),
+      };
+    }).filter(rd=>rd.stations.length);
+    return {
+      id:r.id, ts:r.created_at, by:name(r.observer), byNo:empNo(r.observer),
+      shiftId:r.shift_id, synced:true, remote:true,
+      place:{bord:r.bord, section:r.section},
+      headingType:r.heading, unit:'cm', interval:r.interval_m,
+      faceLength:r.face_length_m!=null?Number(r.face_length_m):null,
+      hwLimit:r.hw_limit_cm, fwLimit:r.fw_limit_cm,
+      limitVersion:r.limit_version, limitLabel:r.limit_label,
+      rounds,
+      stats: adaptStats(setStatById[r.id]),
+    };
+  }).filter(e=>e.stats && e.rounds.length);
+
+  DATA.structure = structs.map(r=>({
+    id:r.id, ts:r.created_at, by:name(r.observer), byNo:empNo(r.observer),
+    shiftId:r.shift_id, synced:true, remote:true,
+    place:{bord:r.bord, section:r.section},
+    type:r.type, strike:r.strike_deg, dip:r.dip_deg, dipDir:r.dip_direction,
+    width:r.width_m!=null?Number(r.width_m):null,
+    distFromFace:r.dist_from_face_m!=null?Number(r.dist_from_face_m):null,
+    displacement:r.displacement_m!=null?Number(r.displacement_m):null,
+    confidence:r.confidence, note:r.note,
+    /* Photographs are not in Storage yet (open decision 29), so a
+       server-read structure has no image. The written record is whole
+       without it — that was always the rule. */
+    photo:null, photoStrokes:r.photo_strokes||0, photoOnDevice:true,
+  }));
+
+  DATA.shift = shifts.map(r=>({
+    id:r.id, ts:r.created_at, by:name(r.observer), shiftId:r.id, synced:true, remote:true,
+    startedAt:r.started_at, endedAt:r.ended_at, shiftName:r.shift_name,
+    deviation:r.deviation,
+  }));
+
+  RAW.keys = DATA.faceLog.length + DATA.offsetSet.length +
+             DATA.structure.length + DATA.shift.length;
+  RAW.unreadable = 0;
 }
 
 /* ═══ 2 · HELPERS ═════════════════════════════════════════════════════ */
@@ -476,10 +713,11 @@ function render(){
     'Read ' + new Date().toLocaleString(undefined,
       {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 
-  if(!HAS_STORE){
+  if(!HAS_STORE && SOURCE !== 'server'){
     app.innerHTML = `
     <div class="eyebrow">Management review</div>
     <h1>No store available</h1>
+    ${sourceBar()}
     <div class="note warn"><span class="mk">◆</span><div>
       This page reads the same device store the field app writes to, and neither the
       host nor this browser has given it one. Nothing is wrong with the records —
@@ -488,6 +726,8 @@ function render(){
     ${diagnostics()}
     <h2 style="font-size:17px">Most likely, in order</h2>
     <ol class="fix">
+      <li><b>You may want the mine server instead.</b> This page can read GeoTech's
+        Supabase project directly rather than a device store — sign in above.</li>
       <li><b>The page was opened from a file, not served.</b> If the address bar starts
         <code>file://</code>, browsers give the page an opaque origin and block storage.
         Serve the folder instead: <code>python3 -m http.server 8000</code>, then open
@@ -495,6 +735,7 @@ function render(){
       <li><b>Site data is blocked</b> — a private window, or cookies/storage disabled
         for this site. Check the browser's site settings.</li>
     </ol>`;
+    wireSource();
     return;
   }
 
@@ -504,6 +745,7 @@ function render(){
     app.innerHTML = `
     <div class="eyebrow">Management review</div>
     <h1>Nothing to show</h1>
+    ${sourceBar()}
     <p class="sub">${nothingThere
       ? `This store is empty — not unreadable, just empty. Nothing has been captured
          on this origin, or it was captured somewhere else.`
@@ -537,6 +779,7 @@ function render(){
         demo records; if they are real capture, do not clear anything — say so first.</li>`}
     </ol>
     ${footnote()}`;
+    wireSource();
     return;
   }
 
@@ -571,7 +814,8 @@ function render(){
 
   app.innerHTML = `
   <div class="eyebrow">Management review</div>
-  <h1>Face measurement, this store</h1>
+  <h1>Face measurement${SOURCE==='server'?'':', this store'}</h1>
+  ${sourceBar()}
   ${nDemo ? `<div class="note warn" style="margin-top:var(--s3)"><span class="mk">◆</span><div>
     <b>This store contains ${nDemo} seeded demo record${nDemo===1?'':'s'}.</b>
     They were written by <code>seed-demo.html</code> to demonstrate this page. Nobody
@@ -741,6 +985,62 @@ function render(){
   ${footnote()}`;
 
   wire();
+  wireSource();
+}
+
+/* The strip that says where these numbers came from. */
+function sourceBar(){
+  const server = SOURCE === 'server';
+  return `<div class="src">
+    <div class="grow">
+      ${server
+        ? `Reading <b>the mine server</b> — figures are derived by the database from the
+           stations and the limit set each face was judged by, not from what the handset
+           reported.${SB_WHO?` Signed in as <b>${esc(SB_WHO.name)}</b>.`:''}`
+        : `Reading <b>this device</b> — only what was captured in this browser, with the
+           figures the handset computed at save.`}
+    </div>
+    ${SB_ON ? (server
+      ? `<button id="srcDevice">Show this device</button>
+         <button id="srcOut">Sign out</button>`
+      : `<button class="go" id="srcServer">Sign in to the mine server</button>`) : ''}
+  </div>
+  ${SB_ERR?`<div class="note warn"><span class="mk">◆</span><div>${esc(SB_ERR)}</div></div>`:''}
+  ${SHOW_SIGNIN?`
+  <form class="signin" id="sbForm">
+    <label for="sbNo">Employee number</label>
+    <input type="text" id="sbNo" autocomplete="username" placeholder="e.g. UK-4471">
+    <label for="sbPw">Password</label>
+    <input type="password" id="sbPw" autocomplete="current-password">
+    <button class="go" type="submit" id="sbGo">Sign in and read the server</button>
+  </form>`:''}`;
+}
+
+/* Wires the strip. Called at the end of every render, on every exit. */
+function wireSource(){
+  const on = (id, fn) => { const el = document.getElementById(id); if(el) el.onclick = fn; };
+  on('srcServer', ()=>{ SHOW_SIGNIN = !SHOW_SIGNIN; SB_ERR = null; render(); });
+  on('srcDevice', async ()=>{ SOURCE='device'; SB_ERR=null; await loadAll(); render(); });
+  on('srcOut',    async ()=>{ sbSignOut(); await loadAll(); render(); });
+
+  const form = document.getElementById('sbForm');
+  if(form) form.onsubmit = async (ev)=>{
+    ev.preventDefault();
+    const no = (document.getElementById('sbNo')||{}).value || '';
+    const pw = (document.getElementById('sbPw')||{}).value || '';
+    const btn = document.getElementById('sbGo');
+    if(btn){ btn.disabled = true; btn.textContent = 'Checking…'; }
+    const r = await sbSignIn(no, pw);
+    if(!r.ok){
+      SB_ERR = r.msg;
+      if(btn){ btn.disabled=false; btn.textContent='Sign in and read the server'; }
+      return render();
+    }
+    SHOW_SIGNIN = false; SB_ERR = null;
+    try{ SOURCE='server'; await loadFromServer(); }
+    catch(e){ SOURCE='device'; SB_ERR='Signed in, but the read failed: '+e.message; await loadAll(); }
+    render();
+  };
 }
 
 function footnote(){
@@ -847,7 +1147,16 @@ function wire(){
 }
 
 (async function boot(){
-  await loadAll();
+  /* A session from earlier in this tab means carry on reading the
+     server; otherwise show whatever this device holds. Either way the
+     page renders — it never sits on a spinner because a server is
+     unreachable. */
+  if(SB_ON && sbRestore()){
+    try{ SOURCE='server'; await loadFromServer(); }
+    catch(e){ SOURCE='device'; SB_ERR='Could not read the server: '+e.message; await loadAll(); }
+  }else{
+    await loadAll();
+  }
   render();
 })();
 </script>

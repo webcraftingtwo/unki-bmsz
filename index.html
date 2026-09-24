@@ -766,12 +766,303 @@ async function loadAll(){
 const online = ()=> navigator.onLine;
 function pending(){ let n=0; KINDS.forEach(k=>cache[k].forEach(e=>{ if(!e.synced) n++; })); return n; }
 
+/* ═══ THE WRITE PATH ═══════════════════════════════════════════════════
+
+   Records are captured into the device store first, always, and pushed
+   afterwards. That order is not an optimisation — underground there is
+   no signal, and a capture that depended on the network would be a
+   capture that did not happen.
+
+   Rules this code keeps, from CLAUDE.md:
+
+     · A write is NEVER dropped. A record that fails to push stays
+       unsynced, keeps its error, and is retried. Nothing here deletes
+       or overwrites a local record on failure.
+     · A record is marked synced only after the server has confirmed it,
+       by returning the row it stored.
+     · Order follows the foreign keys: shift, then face log, then offset
+       set with its stations, then structures. A parent that will not
+       insert stops its children rather than orphaning them.
+
+   WHAT DOES NOT SYNC YET: the marked-up face photograph. The schema
+   holds `photo_path`, a reference into Supabase Storage, and there is no
+   bucket yet (open decision 29). The photo stays on the device; the
+   written record — type, strike, dip, distance — goes up complete,
+   which is why the photo was always defined as an addition to that
+   record and never a replacement for it. */
+
+/* A stable id for this device, so a row can be traced back to the
+   tablet that wrote it. Created once, then reused. */
+let DEVICE_ID = null;
+async function deviceId(){
+  if(DEVICE_ID) return DEVICE_ID;
+  DEVICE_ID = await get('device:id');
+  if(!DEVICE_ID){ DEVICE_ID = 'dev-'+uid(); await put('device:id', DEVICE_ID); }
+  return DEVICE_ID;
+}
+
+/* POST one row and hand back what the server stored. */
+async function sbInsert(table, row, token){
+  return await sbFetch('/rest/v1/'+table, {
+    method:'POST', token, body:row,
+    headers:{'Prefer':'return=representation'},
+  });
+}
+
+/* Local ids are not UUIDs, so the mapping from a local record to the row
+   the server created is kept explicitly and survives a reload. */
+const remoteKey = (kind, localId) => 'remote:'+kind+':'+localId;
+
+/* The shift row is only written at sign-out, but face logs reference it
+   long before that. Create it on first need, from whatever we have. */
+async function remoteShiftId(localShiftId, token){
+  if(!localShiftId) return null;
+  const known = await get(remoteKey('shift', localShiftId));
+  if(known) return known;
+
+  const closed = cache.shift.find(e=>e.shiftId===localShiftId);
+  const src = closed || (shift && shift.id===localShiftId ? shift : null);
+  if(!src) return null;
+
+  const r = await sbInsert('shift_records', {
+    observer: session.uid,
+    section: session.section,
+    shift_name: src.shiftName || 'Morning',
+    started_at: src.startedAt || src.ts || nowTS(),
+    ended_at:   src.endedAt || null,
+    deviation:  src.deviation || null,
+    device:     await deviceId(),
+    client_ts:  src.ts || src.startedAt || nowTS(),
+  }, token);
+  if(!r.ok || !Array.isArray(r.data) || !r.data[0]) return null;
+  await put(remoteKey('shift', localShiftId), r.data[0].id);
+  return r.data[0].id;
+}
+
+/* ── local record → table row ────────────────────────────────────────
+   The device speaks camelCase and the database speaks snake_case, and
+   neither is allowed to leak into the other. Generated columns
+   (sample_flagged, mining_height_cm) are never sent: the server derives
+   them, which is the point of putting them there. */
+const sectionOf = e => (e.place && e.place.section) || session.section;
+const bordOf    = e => (e.place && e.place.bord) || e.bord || null;
+
+async function rowForFaceLog(e, token){
+  return {
+    shift_id: await remoteShiftId(e.shiftId, token),
+    observer: session.uid,
+    section:  sectionOf(e),
+    bord:     bordOf(e) || '—',
+    level:    (e.place && e.place.level) || null,
+    peg:      e.peg || null,
+    advance_m:     e.advance ?? null,
+    face_length_m: e.faceLength,
+    face_width_m:  e.faceWidth ?? null,
+    face_height_m: e.faceHeight ?? null,
+    channel_id:     e.channelId || null,
+    dist_to_face_m: e.distToFace ?? null,
+    /* '' is not a TARP class; null is. */
+    tarp:       e.tarp || null,
+    structural: e.structural || null,
+    area_safe:  !!(e.ack && e.ack.areaSafe),
+    miner_name: (e.ack && e.ack.miner) || '',
+    team:       (e.ack && e.ack.team) || [],
+    readiness:  (e.ack && e.ack.readiness) || {},
+    source:     e.source || 'manual',
+    device:     await deviceId(),
+    client_ts:  e.ts,
+  };
+}
+
+async function rowForOffsetSet(e, token){
+  return {
+    shift_id: await remoteShiftId(e.shiftId, token),
+    observer: session.uid,
+    section:  sectionOf(e),
+    bord:     bordOf(e) || '—',
+    heading:  e.headingType,
+    face_length_m: e.faceLength,
+    interval_m:    e.interval || 1,
+    limit_version: e.limitVersion,
+    limit_label:   e.limitLabel,
+    hw_limit_cm:   e.hwLimit,
+    fw_limit_cm:   e.fwLimit,
+    /* The handset's own figures. The server does not read these as
+       truth — offset_set_stats derives its own and offset_stat_drift
+       reports any disagreement. */
+    reported_stats: e.stats || null,
+    device:    await deviceId(),
+    client_ts: e.ts,
+  };
+}
+
+function stationRows(e, offsetSetId){
+  const out = [];
+  (e.rounds||[]).forEach(r=>{
+    (r.stations||[]).forEach(st=>{
+      if(st.hw==null || st.fw==null) return;   // incomplete; caller checks
+      out.push({
+        offset_set_id: offsetSetId,
+        round_dist_m:  r.dist,
+        station_dist_m: st.dist,
+        hw_cm: st.hw,
+        fw_cm: st.fw,
+        cause: st.cause || null,
+      });
+    });
+  });
+  return out;
+}
+
+async function rowForStructure(e, token){
+  return {
+    shift_id: await remoteShiftId(e.shiftId, token),
+    observer: session.uid,
+    section:  sectionOf(e),
+    bord:     bordOf(e),
+    type:     e.type,
+    strike_deg: e.strike ?? null,
+    dip_deg:    e.dip ?? null,
+    dip_direction: e.dipDir || null,
+    width_m:          e.width ?? null,
+    dist_from_face_m: e.distFromFace ?? null,
+    displacement_m:   e.displacement ?? null,
+    confidence: e.confidence || null,
+    note:       e.note || null,
+    /* No Storage bucket yet — the photograph stays on the device. */
+    photo_path:    null,
+    photo_strokes: e.photoStrokes || 0,
+    device:    await deviceId(),
+    client_ts: e.ts,
+  };
+}
+
+async function rowForShift(e, token){
+  return {
+    observer: session.uid,
+    section:  session.section,
+    shift_name: e.shiftName || 'Morning',
+    started_at: e.startedAt || e.ts,
+    ended_at:   e.endedAt || null,
+    deviation:  e.deviation || null,
+    device:    await deviceId(),
+    client_ts: e.ts,
+  };
+}
+
+/* Only ever one push in flight.
+
+   Found by testing: reconnecting fires the automatic flush at the same
+   moment as a press of the sync button, and both runs read the same
+   unsynced records before either had finished marking them. The result
+   was the same face measurement inserted twice — two rows, same
+   readings, same timestamp. In a statutory record that is worse than a
+   failed sync, because nothing about it looks wrong.
+
+   `synced` cannot be the guard: it is only true once the server has
+   confirmed, and it must stay that way, or a failed push would mark a
+   record as sent. So the guard is the run itself, and a second caller
+   waits for the first rather than starting its own. */
+let SYNCING = null;
 async function syncNow(){
-  if(!online()){ flash('Offline — '+pending()+' record(s) held on device',true); return; }
-  let n=0;
-  for(const k of KINDS) for(const e of cache[k])
-    if(!e.synced){ e.synced=true; e.syncedAt=nowTS(); await updateEntry(k,e); n++; }
-  flash(n? 'Synced '+n+' record(s) to MRM' : 'Already up to date');
+  if(SYNCING) return SYNCING;
+  SYNCING = (async()=>{ try{ return await syncRun(); } finally{ SYNCING = null; } })();
+  return SYNCING;
+}
+
+/* Push everything outstanding. Foreign keys decide the order. */
+async function syncRun(){
+  const held = pending();
+  if(!SB_ON){
+    flash('No backend configured — '+held+' record(s) held on this device', true); return; }
+  if(!online()){
+    flash('Offline — '+held+' record(s) held on device', true); return; }
+  if(!session || !session.uid){
+    flash('Sign in with a connection before syncing — records are safe on this device', true);
+    return; }
+
+  const token = await sbToken();
+  if(!token){
+    flash('Could not renew your session — '+held+' record(s) stay on this device', true);
+    return; }
+
+  let done=0, failed=0, lastErr=null;
+
+  const push = async (kind, e, insert) => {
+    try{
+      const r = await insert();
+      if(r.ok && Array.isArray(r.data) && r.data[0]){
+        e.synced   = true;
+        e.syncedAt = nowTS();
+        e.remoteId = r.data[0].id;
+        delete e.syncError;
+        await updateEntry(kind, e);
+        await put(remoteKey(kind, e.id), r.data[0].id);
+        done++;
+        return r.data[0].id;
+      }
+      /* Not synced. The record stays exactly where it is. */
+      failed++;
+      lastErr = r.offline ? 'connection lost' : sbError(r);
+      e.syncError = lastErr;
+      await updateEntry(kind, e);
+      return null;
+    }catch(err){
+      failed++;
+      lastErr = (err && err.message) || 'unknown error';
+      e.syncError = lastErr;
+      await updateEntry(kind, e);
+      return null;
+    }
+  };
+
+  /* Oldest first, so a shift's records go up in the order they happened. */
+  const outstanding = kind => cache[kind].filter(e=>!e.synced)
+    .slice().sort((a,b)=> new Date(a.ts) - new Date(b.ts));
+
+  for(const e of outstanding('faceLog'))
+    await push('faceLog', e, async()=>sbInsert('face_logs', await rowForFaceLog(e, token), token));
+
+  for(const e of outstanding('offsetSet')){
+    /* A set whose stations are incomplete cannot be pushed: the parent
+       row would land with no readings under it, which reads as a face
+       that was measured and found empty. */
+    const expected = (e.rounds||[]).reduce((n,r)=>n+(r.stations||[]).length, 0);
+    const rows = stationRows(e, null);
+    if(!expected || rows.length !== expected){
+      failed++;
+      lastErr = 'incomplete station readings';
+      e.syncError = lastErr;
+      await updateEntry('offsetSet', e);
+      continue;
+    }
+    const id = await push('offsetSet', e,
+      async()=>sbInsert('offset_sets', await rowForOffsetSet(e, token), token));
+    if(!id) continue;
+
+    const st = await sbInsert('offset_stations', stationRows(e, id), token);
+    if(!st.ok){
+      /* The parent is in and the stations are not. Say so loudly: the
+         set is up there without its readings and needs attention. */
+      e.syncError = 'stations rejected — ' + (st.offline ? 'connection lost' : sbError(st));
+      e.stationsSynced = false;
+      await updateEntry('offsetSet', e);
+      failed++; lastErr = e.syncError;
+    }else{
+      e.stationsSynced = true;
+      await updateEntry('offsetSet', e);
+    }
+  }
+
+  for(const e of outstanding('structure'))
+    await push('structure', e, async()=>sbInsert('structures', await rowForStructure(e, token), token));
+
+  for(const e of outstanding('shift'))
+    await push('shift', e, async()=>sbInsert('shift_records', await rowForShift(e, token), token));
+
+  if(!done && !failed) flash('Already up to date');
+  else if(!failed)     flash('Synced '+done+' record(s) to MRM');
+  else flash('Synced '+done+', '+failed+' still held — '+lastErr, true);
   render();
 }
 /* ═══ 6 · SHIFT & GATE MODEL ══════════════════════
@@ -871,7 +1162,6 @@ const AUTH = {
 
 /* Sections are exactly these — same as SLAM. Never invent another. */
 const SECTIONS = ['14 South','16 North'];
-const ROLES = Object.keys(CAN);
 
 const cryptoOK = () => !!(window.crypto && window.crypto.subtle &&
                           typeof window.crypto.subtle.deriveBits==='function' &&
@@ -898,6 +1188,110 @@ function sameBytes(a,b){
 }
 
 /* ── the Supabase seam ───────────────────────────────────────────── */
+/*
+   WIRED. The four functions below now talk to GeoTech's own Supabase
+   project. They are still the whole seam: nothing else in this file
+   knows the backend exists, except syncNow() which pushes records.
+
+   No client library. Supabase's API is HTTPS + JSON, and the whole of
+   what this app needs is four endpoints, so a vendored bundle would be
+   a dependency to maintain for no gain. CLAUDE.md's "NO build process,
+   NO framework, NO npm" is easier to keep this way, not harder.
+
+   THE ANON KEY IS PUBLIC BY DESIGN. It identifies the project, it does
+   not authorise anything — every row this app can reach is decided by
+   RLS against the signed-in user. A service-role key must NEVER appear
+   in this file (CLAUDE.md, hard rules).
+*/
+const SB = {
+  url: 'https://finnereptajssuzshrrc.supabase.co',
+  key: 'sb_publishable_4F9nx2HYSAv5Z9scbMod3A_FcpD5PWu',
+};
+const SB_ON = !!(SB.url && SB.key);
+
+/* The app shows role names; the database stores the enum from the
+   migration. One map, both directions, so neither leaks into the other. */
+const ROLE_DB = {
+  'Geological Technician':'geological_technician',
+  'Section Geologist':    'section_geologist',
+  'Chief Geologist':      'chief_geologist',
+  'MRM Manager':          'mrm_manager',
+};
+const ROLE_UI = {};
+Object.keys(ROLE_DB).forEach(k=>{ ROLE_UI[ROLE_DB[k]] = k; });
+
+/* Supabase auth is keyed on an email address; the mine signs in with an
+   employee number. This maps one to the other deterministically.
+   `.invalid` is reserved by RFC 2606 and can never resolve, which is
+   exactly what we want: these are handles, not mailboxes, and no mail
+   can ever be sent to one. It also means e-mail confirmation must be
+   OFF for the project — see the note in CLAUDE.md. */
+const sbEmail = no =>
+  normNo(no).toLowerCase().replace(/[^a-z0-9.\-]/g,'-') + '@geotech.unki.invalid';
+
+/* One fetch wrapper. Returns {ok, status, data, offline} and never
+   throws, because every caller has to distinguish three outcomes:
+   worked, the server said no, and there is no network. Underground the
+   third is normal and must not look like the second. */
+async function sbFetch(path, opts){
+  opts = opts || {};
+  if(!SB_ON) return {ok:false, status:0, offline:true, data:{message:'No backend configured'}};
+  const ctl = new AbortController();
+  const timer = setTimeout(()=>ctl.abort(), opts.timeout || 15000);
+  try{
+    const headers = {
+      'apikey': SB.key,
+      'Authorization': 'Bearer ' + (opts.token || SB.key),
+      'Content-Type': 'application/json',
+    };
+    if(opts.headers) Object.keys(opts.headers).forEach(k=>{ headers[k]=opts.headers[k]; });
+    const res = await fetch(SB.url + path, {
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body != null ? JSON.stringify(opts.body) : undefined,
+      signal: ctl.signal,
+    });
+    const text = await res.text();
+    let data = null;
+    try{ data = text ? JSON.parse(text) : null; }catch(e){ data = {message:text}; }
+    return {ok: res.ok, status: res.status, data};
+  }catch(e){
+    /* Aborted, DNS failure, no signal — all the same to the caller. */
+    return {ok:false, status:0, offline:true,
+            data:{message: (e && e.message) || 'Network unreachable'}};
+  }finally{ clearTimeout(timer); }
+}
+
+/* The server's error text, reduced to one line fit to show a person.
+   Never shown for a sign-in failure — see authenticate(). */
+function sbError(r, fallback){
+  const d = r && r.data;
+  const m = d && (d.msg || d.message || d.error_description || d.error || d.hint);
+  return (typeof m === 'string' && m) ? m : (fallback || 'The server rejected that.');
+}
+
+/* ── offline sign-in ──────────────────────────────────────────────────
+   A technician underground has no signal, so sign-in cannot depend on
+   reaching the server. After the SERVER has verified someone on this
+   device, we keep a PBKDF2 record of that password locally — same
+   parameters as before, 210k iterations — and sign them in against it
+   when the network is gone. It is a cache of a verdict the server
+   already gave, never an independent authority: it can only ever say
+   yes to a password the server has already accepted on this device. */
+async function cacheCredential(employeeNo, password, profile){
+  if(!cryptoOK()) return;
+  const no = normNo(employeeNo);
+  const salt = crypto.getRandomValues(new Uint8Array(AUTH.SALT_BYTES));
+  const hash = await derive(password, salt, AUTH.ITERATIONS);
+  await put('account:'+no, {
+    employeeNo:no, name:profile.name, role:profile.role, section:profile.section,
+    roleSource:profile.roleSource, uid:profile.uid,
+    algo:AUTH.ALGO, iterations:AUTH.ITERATIONS, salt:b64(salt), hash:b64(hash),
+    cachedAt:nowTS(), failed:0, lockedUntil:null,
+  });
+  const idx = await accountIndex();
+  if(!idx.includes(no)) await put('accounts:index', idx.concat([no]));
+}
 
 async function accountIndex(){ return (await get('accounts:index')) || []; }
 
@@ -907,62 +1301,143 @@ async function findAccount(employeeNo){
   return await get('account:'+no);
 }
 
-async function createAccount({name, employeeNo, role, section, password}){
+/* auth.signUp. The profile row is created server-side by a trigger on
+   auth.users (migration 0002) — this app has no INSERT on profiles and
+   must not. Section is sent because the trigger needs it; ROLE IS NOT
+   SENT, because the server would ignore it anyway: everyone is created
+   a Geological Technician and elevation is an MRM action. */
+async function createAccount({name, employeeNo, section, password}){
   if(!cryptoOK()) throw new Error('This browser cannot hash passwords securely.');
   const no = normNo(employeeNo);
-  if(await findAccount(no)) throw new Error('That employee number already has an account.');
-  const salt = crypto.getRandomValues(new Uint8Array(AUTH.SALT_BYTES));
-  const hash = await derive(password, salt, AUTH.ITERATIONS);
-  const acct = {
-    employeeNo:no, name:name.trim(), role, section,
-    algo:AUTH.ALGO, iterations:AUTH.ITERATIONS,
-    salt:b64(salt), hash:b64(hash),
-    /* Role is self-declared on this form. In production it comes from
-       the RLS migration, not from whoever filled the form in. Recorded
-       so a reviewer can tell the two apart. */
-    roleSource:'self-declared',
-    createdAt:nowTS(), failed:0, lockedUntil:null,
-  };
-  await put('account:'+no, acct);
-  const idx = await accountIndex();
-  if(!idx.includes(no)) await put('accounts:index', idx.concat([no]));
-  return acct;
+  if(!SB_ON) throw new Error('No backend is configured, so accounts cannot be created.');
+
+  const r = await sbFetch('/auth/v1/signup', {method:'POST', body:{
+    email: sbEmail(no), password,
+    data: { employee_no: no, full_name: String(name||'').trim(), section },
+  }});
+
+  if(r.offline) throw new Error(
+    'No signal. An account has to be created where there is a connection — '+
+    'on surface, before going underground.');
+  if(!r.ok){
+    const m = sbError(r);
+    /* The trigger raises this when the employee number is taken. */
+    if(/duplicate key|already registered|already been registered/i.test(m))
+      throw new Error('That employee number already has an account.');
+    throw new Error(m);
+  }
+  return { employeeNo:no, name:String(name||'').trim(), section };
 }
 
-/* Returns {ok, account} or {ok:false, reason}. The caller shows one
-   message for "no such account" and "wrong password" alike — telling
-   the two apart just enumerates who works here. */
+/* auth.signInWithPassword, then the profile row for role and section —
+   which come from the SERVER, never from this device. Falls back to the
+   cached credential only when the network is unreachable. */
 async function authenticate(employeeNo, password){
   if(!cryptoOK()) return {ok:false, reason:'nocrypto'};
-  const acct = await findAccount(employeeNo);
-  if(!acct) return {ok:false, reason:'bad'};
-  if(acct.lockedUntil && new Date(acct.lockedUntil) > new Date())
-    return {ok:false, reason:'locked', until:acct.lockedUntil};
+  const no = normNo(employeeNo);
+
+  /* The lockout is checked BEFORE the server is contacted, and it holds
+     against the correct password, exactly as documented. Supabase does
+     its own rate limiting and that is the real control — this one only
+     ever protects a device someone is holding. It is kept because it is
+     what CLAUDE.md promises and what the screen tells the technician. */
+  const cached = await findAccount(no);
+  if(cached && cached.lockedUntil && new Date(cached.lockedUntil) > new Date())
+    return {ok:false, reason:'locked', until:cached.lockedUntil};
+
+  /* Bookkeeping for a wrong password, wherever the "no" came from. */
+  const countFailure = async () => {
+    if(!cached) return {ok:false, reason:'bad'};   // nothing on this device to count against
+    cached.failed = (cached.failed||0)+1;
+    if(cached.failed >= AUTH.MAX_TRIES){
+      cached.lockedUntil = new Date(Date.now()+AUTH.LOCKOUT_MS).toISOString();
+      cached.failed = 0;
+      await put('account:'+cached.employeeNo, cached);
+      return {ok:false, reason:'locked', until:cached.lockedUntil};
+    }
+    await put('account:'+cached.employeeNo, cached);
+    return {ok:false, reason:'bad', left:AUTH.MAX_TRIES-cached.failed};
+  };
+
+  if(SB_ON){
+    const r = await sbFetch('/auth/v1/token?grant_type=password',
+      {method:'POST', body:{email: sbEmail(no), password}});
+
+    if(!r.offline){
+      /* The server answered. Its answer is final — no local fallback
+         here, or a stale cached password would outlive a revoked one. */
+      if(!r.ok) return await countFailure();
+
+      const tok = r.data || {};
+      const uid = tok.user && tok.user.id;
+      const p = await sbFetch(
+        '/rest/v1/profiles?select=employee_no,full_name,role,section,role_source,active'+
+        '&id=eq.'+encodeURIComponent(uid),
+        {token: tok.access_token});
+      const row = p.ok && Array.isArray(p.data) && p.data[0];
+      if(!row) return {ok:false, reason:'noprofile'};
+      if(row.active === false) return {ok:false, reason:'inactive'};
+
+      const account = {
+        employeeNo: row.employee_no, name: row.full_name,
+        role: ROLE_UI[row.role] || 'Geological Technician',
+        section: row.section, roleSource: row.role_source || 'self-declared',
+        uid,
+        token: tok.access_token, refresh: tok.refresh_token,
+        tokenExpiresAt: new Date(Date.now() + (tok.expires_in||3600)*1000).toISOString(),
+      };
+      /* Cache for the next sign-in underground. This also resets the
+         failure counter, since the server has just said yes. */
+      await cacheCredential(no, password, account);
+      return {ok:true, account, online:true};
+    }
+  }
+
+  /* No network. The cached credential from a previous online sign-in on
+     THIS device is the only remaining path, lockout rules and all. */
+  const acct = cached;
+  if(!acct || !acct.hash) return {ok:false, reason:'offline-nocache'};
 
   const hash = await derive(password, unb64(acct.salt), acct.iterations);
-  if(!sameBytes(hash, unb64(acct.hash))){
-    acct.failed = (acct.failed||0)+1;
-    if(acct.failed >= AUTH.MAX_TRIES){
-      acct.lockedUntil = new Date(Date.now()+AUTH.LOCKOUT_MS).toISOString();
-      acct.failed = 0;
-      await put('account:'+acct.employeeNo, acct);
-      return {ok:false, reason:'locked', until:acct.lockedUntil};
-    }
-    await put('account:'+acct.employeeNo, acct);
-    return {ok:false, reason:'bad', left:AUTH.MAX_TRIES-acct.failed};
-  }
+  if(!sameBytes(hash, unb64(acct.hash))) return await countFailure();
+
   acct.failed=0; acct.lockedUntil=null; acct.lastSignIn=nowTS();
   await put('account:'+acct.employeeNo, acct);
-  return {ok:true, account:acct};
+  return {ok:true, account:acct, online:false};
 }
 
+/* The session auth returns, plus what this app needs on top: the shift
+   expiry it already had, and the tokens for the write path. */
 function newSession(acct){
   return { name:acct.name, employeeNo:acct.employeeNo, role:acct.role,
            section:acct.section, roleSource:acct.roleSource,
+           uid:acct.uid || null,
+           token:acct.token || null, refresh:acct.refresh || null,
+           tokenExpiresAt:acct.tokenExpiresAt || null,
            issuedAt:nowTS(),
            expiresAt:new Date(Date.now()+AUTH.SESSION_MS).toISOString() };
 }
 const sessionLive = s => !!(s && s.expiresAt && new Date(s.expiresAt) > new Date());
+
+/* An access token lasts an hour; a shift lasts twelve. Refresh it when
+   it is close to expiry, and say so honestly when we cannot: the caller
+   queues the write rather than losing it. */
+async function sbToken(){
+  if(!SB_ON || !session || !session.token) return null;
+  const exp = session.tokenExpiresAt ? new Date(session.tokenExpiresAt).getTime() : 0;
+  if(exp - Date.now() > 60*1000) return session.token;
+  if(!session.refresh) return null;
+
+  const r = await sbFetch('/auth/v1/token?grant_type=refresh_token',
+    {method:'POST', body:{refresh_token: session.refresh}});
+  if(!r.ok) return r.offline ? null : null;
+  const tok = r.data || {};
+  session.token = tok.access_token;
+  session.refresh = tok.refresh_token || session.refresh;
+  session.tokenExpiresAt = new Date(Date.now() + (tok.expires_in||3600)*1000).toISOString();
+  await put('session', session);
+  return session.token;
+}
 
 /* ── screens ─────────────────────────────────────────────────────── */
 
@@ -1019,15 +1494,16 @@ function renderAuth(app){
         <div class="chips" id="aSection">${SECTIONS.map((s,i)=>
           `<button class="chip ${i===0?'sel':''}" data-sec="${esc(s)}">${esc(s)}</button>`).join('')}</div>
 
-        <label class="f" style="margin-top:16px">Role</label>
-        <div class="chips" id="aRole">${ROLES.map((r,i)=>
-          `<button class="chip ${i===0?'sel':''}" data-role="${esc(r)}"
-            style="height:auto;padding:12px 15px;font-size:14.5px">${esc(r)}</button>`).join('')}</div>
-        <div class="note warn" style="margin-top:14px"><span class="mk">◆</span><div>
-          Role here is <b>self-declared</b> and is recorded as such. It grants nothing on its
-          own — in production the role comes from the RLS migration on the shared project, and
-          authorising a deviation still requires the Chief Geologist.
+        <div class="note warn" style="margin-top:16px"><span class="mk">◆</span><div>
+          Every account is created as a <b>Geological Technician</b>. There is no role to
+          pick: the server sets it and ignores anything this form might claim, because a
+          self-declared Chief Geologist would otherwise hold §7.3 deviation authority.
+          Elevation is done by MRM, against the database.
           <span class="clause">§7.3, §9.1</span></div></div>
+        <div class="note warn" style="margin-top:12px"><span class="mk">◆</span><div>
+          The <b>section</b> you pick decides which section's records you can read, and
+          nobody has confirmed it. It is recorded as self-asserted so MRM can audit it.
+          </div></div>
 
         <label class="f" style="margin-top:16px" for="aPw">Password
           <span class="clause">at least ${AUTH.MIN_PW} characters</span></label>
@@ -1047,8 +1523,9 @@ function renderAuth(app){
 
         <button class="btn" id="doSignin" ${cryptoOK()?'':'disabled'}>Sign in</button>
       `}
-      ${help(`<p class="hint">Accounts are held on this device so you can sign in underground
-        with no network. <span class="clause">Brief §5, §31</span></p>`)}
+      ${help(`<p class="hint">Accounts live on the mine's server. Once you have signed in on
+        this device with a connection, you can sign in again underground with no signal, and
+        captured work queues until there is one. <span class="clause">Brief §5, §31</span></p>`)}
     </div>
   </div></div>`;
 
@@ -1063,7 +1540,6 @@ function renderAuth(app){
     return ()=>{ const s=box.querySelector('.chip.sel'); return s?s.dataset[attr]:null; };
   };
   const getSection=pickOne('aSection','sec');
-  const getRole=pickOne('aRole','role');
   const val=id=>{ const el=app.querySelector('#'+id); return el?el.value:''; };
 
   const enter=(id,run)=>{ const el=app.querySelector('#'+id);
@@ -1077,7 +1553,7 @@ function renderAuth(app){
       const bad=pwProblem(val('aPw'), val('aPw2'));
       if(bad){ authMsg={text:bad,bad:true}; return renderAuth(app); }
       try{
-        await createAccount({name, employeeNo:no, role:getRole(),
+        await createAccount({name, employeeNo:no,
                              section:getSection(), password:val('aPw')});
         authMode='signin'; authNo=normNo(no);
         authMsg={text:'Account created for '+normNo(no)+'. Sign in to start a shift.',bad:false};
@@ -1100,7 +1576,16 @@ function renderAuth(app){
                   fmtT(r.until)+'.',bad:true}
           : r.reason==='nocrypto'
           ? {text:'This browser cannot hash passwords securely.',bad:true}
-          /* One message for both failures — on purpose. */
+          : r.reason==='offline-nocache'
+          ? {text:'No signal, and this device has not signed you in before. '+
+                  'The first sign-in on a device needs a connection — do it on surface.',bad:true}
+          : r.reason==='noprofile'
+          ? {text:'Signed in, but this account has no profile on the server. '+
+                  'MRM needs to provision it before you can capture.',bad:true}
+          : r.reason==='inactive'
+          ? {text:'This account has been deactivated. Speak to MRM.',bad:true}
+          /* One message for "no such account" and "wrong password" — on
+             purpose. Telling them apart enumerates who works here. */
           : {text:'Employee number or password is incorrect.'+
                   (r.left!=null?' '+r.left+' attempt(s) left before lockout.':''),bad:true};
         return renderAuth(app);
@@ -2515,8 +3000,15 @@ function renderShell(){
   /* The net pill is the only thing online/offline changes — patch it,
      do not rebuild the screen underneath the technician. */
   const netChanged = ()=>{ if(stage==='app') refreshNav(); };
-  window.addEventListener('online', netChanged);
   window.addEventListener('offline', netChanged);
+  /* "Writes queue when offline and flush when back online" — the flush
+     is the half that is easy to forget, so it is wired to the event
+     rather than left to whoever remembers to press the button. Quiet
+     when there is nothing held. */
+  window.addEventListener('online', ()=>{
+    netChanged();
+    if(session && session.uid && pending() > 0) syncNow();
+  });
 
   session = await get('session');
   shift   = await get('shift:current');
