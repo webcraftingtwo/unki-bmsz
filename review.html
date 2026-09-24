@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12100B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GeoTech">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>UNKI GEOTECH — Management Review</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════
@@ -1171,6 +1179,88 @@ function wire(){
     await loadAll();
   }
   render();
+})();
+</script>
+<script>
+/* ═══ PWA ═════════════════════════════════════════════════════════════
+   Registers the app shell worker and offers updates. Inlined in both
+   pages rather than shared from a file, for the same reason the storage
+   picker is: each page stands on its own, and one more fetch at boot is
+   one more thing to fail underground.
+
+   THE UPDATE IS NEVER TAKEN AUTOMATICALLY. A new worker installs and
+   waits; this shows a bar and the person decides when. Offsets being
+   typed at that moment live in memory, and a reload would lose them —
+   so a silent refresh could destroy a traverse someone has just walked.
+   ═════════════════════════════════════════════════════════════════════ */
+(function(){
+  if(!('serviceWorker' in navigator)) return;
+
+  /* Whether this page was already under a worker's control. Without it,
+     the very first install would look like an update and reload a page
+     the person just opened. */
+  var hadController = !!navigator.serviceWorker.controller;
+  var reloading = false;
+
+  function offerUpdate(worker){
+    if(document.getElementById('swUpdate')) return;
+    var bar = document.createElement('div');
+    bar.id = 'swUpdate';
+    bar.setAttribute('role','status');
+    bar.style.cssText =
+      'position:fixed;left:12px;right:12px;bottom:12px;z-index:9999;' +
+      'display:flex;gap:12px;align-items:center;flex-wrap:wrap;' +
+      'background:#1A170F;border:1.5px solid #FFC61A;border-radius:12px;' +
+      'padding:14px 16px;color:#F5F1E6;font:15px/1.45 ui-sans-serif,system-ui,sans-serif;' +
+      'box-shadow:0 8px 28px rgba(0,0,0,.55);max-width:640px;margin:0 auto';
+    bar.innerHTML =
+      '<span style="flex:1 1 auto;min-width:200px">A new version is ready. ' +
+      'It will not be applied until you say so — finish what you are capturing first.</span>';
+
+    var go = document.createElement('button');
+    go.textContent = 'Update now';
+    go.style.cssText = 'appearance:none;border:0;border-radius:9px;background:#FFC61A;' +
+      'color:#120F07;font:600 15px/1 inherit;padding:12px 16px;min-height:44px;cursor:pointer';
+    go.onclick = function(){
+      go.disabled = true; go.textContent = 'Updating…';
+      worker.postMessage({type:'SKIP_WAITING'});
+    };
+
+    var later = document.createElement('button');
+    later.textContent = 'Later';
+    later.style.cssText = 'appearance:none;border:1.5px solid #2E2A1F;border-radius:9px;' +
+      'background:transparent;color:#F5F1E6;font:600 15px/1 inherit;padding:12px 16px;' +
+      'min-height:44px;cursor:pointer';
+    later.onclick = function(){ bar.remove(); };
+
+    bar.appendChild(go); bar.appendChild(later);
+    document.body.appendChild(bar);
+  }
+
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      if(reg.waiting) offerUpdate(reg.waiting);
+      reg.addEventListener('updatefound', function(){
+        var w = reg.installing;
+        if(!w) return;
+        w.addEventListener('statechange', function(){
+          if(w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w);
+        });
+      });
+    }).catch(function(e){
+      /* A service worker needs https or localhost. Over plain http on a
+         LAN address it will not register, and that is not an error worth
+         interrupting anyone over — the app still works, just without the
+         offline shell. */
+      console.info('Service worker not registered:', e && e.message);
+    });
+  });
+
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if(!hadController || reloading) return;
+    reloading = true;
+    location.reload();
+  });
 })();
 </script>
 </body>

@@ -1,0 +1,48 @@
+{
+  "name": "Unki GeoTech — BMSZ Marking & Face Measurement",
+  "short_name": "GeoTech",
+  "description": "Underground BMSZ marking and face measurement for Unki Mine. Captures face logs, two rounds of tape offsets and geological structures, and works with no signal.",
+  "id": "/unki-geotech",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#12100B",
+  "theme_color": "#12100B",
+  "categories": ["productivity", "utilities"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Capture a face",
+      "short_name": "Capture",
+      "description": "The field app: acknowledgement, face log, offsets and structures.",
+      "url": "./index.html"
+    },
+    {
+      "name": "Management review",
+      "short_name": "Review",
+      "description": "Read-only dashboard of captured faces against their design cut.",
+      "url": "./review.html"
+    }
+  ]
+}

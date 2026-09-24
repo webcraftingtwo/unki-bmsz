@@ -115,7 +115,10 @@ notes**, the §7.3 authorisation for the deviations below.
   `GeoTech` (`finnereptajssuzshrrc`), **wired and live**. NOT SLAM's.
   See the hard rules. No client library: the API is HTTPS + JSON and
   `fetch` is enough, so there is no bundle to vendor or maintain.
-- Installable PWA, vendored dependencies, service worker app-shell cache.
+- Installable PWA — `manifest.webmanifest`, `sw.js`, `icons/`. Real as of
+  2026-09-24; before that this line described an intention. There are no
+  vendored dependencies because there are no libraries: the app has no
+  third-party code at all, and `vendor/` does not exist.
 - Deliberate, for the same reason as SLAM: runs underground on
   ruggedised tablets with no signal.
 
@@ -128,8 +131,14 @@ notes**, the §7.3 authorisation for the deviations below.
   either page, never deployed to a working tablet. Every row it writes
   carries `demo:true`, review.html says so in a banner and tags each
   affected row, and its "remove" touches nothing without that flag.
-- vendor/ — mirror SLAM's vendoring. Never re-point at a CDN.
-- sw.js — app shell only. Never intercept Supabase or non-GET.
+- sw.js — app shell only. Never intercept Supabase or non-GET. See the
+  PWA section: the three rules in that file are load-bearing.
+- manifest.webmanifest, icons/ — installability. Icons are generated,
+  not hand-drawn; the generator is in the scratchpad, the PNGs are
+  committed.
+- There is no vendor/ and no vendored code. The app uses no libraries,
+  so "mirror SLAM's vendoring" has nothing to mirror. If a library is
+  ever genuinely needed, vendor it — never a CDN.
 - migrations/ — apply BEFORE deploying app code that writes new columns.
   0001 (schema), 0002 (profile provisioning), 0003 (helpers out of the
   public API) and 0004 (the demo flag) are all **applied** to the GeoTech
@@ -356,6 +365,44 @@ on the network would be a capture that did not happen.
   decision 29). The written record goes up complete; the image stays on
   the device. This is survivable only because the photo was always
   defined as an addition to that record, never a replacement for it.
+
+## The PWA
+
+Installable on a ruggedised tablet and usable with no signal. That is
+the whole point: a technician opens the app at a face nine levels down
+and it is there.
+
+`sw.js` caches the app shell and nothing else. Three rules govern it,
+and none of them is style:
+
+1. **Never intercept a non-GET request.** Every write goes to the
+   network or fails loudly, so the offline queue can hold it. A worker
+   that quietly answered a POST would be a worker that silently dropped
+   a face measurement.
+2. **Never intercept Supabase, or any other origin.** Sign-in, the write
+   path and the dashboard's reads all go straight past it. A cached read
+   is a stale read, and a stale over-break figure is worse than none.
+3. **Never update under the technician.** A new worker installs and
+   WAITS. The page offers a bar and the person chooses when. Offsets
+   being typed at that moment live in memory — `OS` is not persisted
+   until save — so a silent refresh would destroy a traverse someone had
+   just walked. `skipWaiting` is sent on their say-so and never on ours.
+
+`seed-demo.html` is deliberately not precached and is unavailable
+offline. It is not part of the app and has no business being reachable
+on a tablet that has lost its connection.
+
+**Deploying it.** A service worker needs **https**, or `localhost`. Over
+plain http on a LAN address it will not register — the app still works,
+it just has no offline shell, and the console says so once. The host
+should serve `.webmanifest` as `application/manifest+json`; browsers are
+lenient but it is one less warning.
+
+**Changing the shell.** The worker is cache-first, so an edited
+`index.html` will not appear on a reload until `CACHE` in `sw.js` is
+bumped. That is the production behaviour we want and a nuisance in
+development — use the browser's "Update on reload" in the Application
+tab, or unregister the worker, while you are working on it.
 
 ## Running it in a browser
 
